@@ -1,2 +1,2 @@
-hf_models/*
+hf_models/**/*.safetensors
 mlx_env/*
