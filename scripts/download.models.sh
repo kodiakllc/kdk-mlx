@@ -7,7 +7,7 @@ models=(
   "Mistral-Nemo-Instruct-2407-4bit"
   "Qwen2.5-7B-Instruct-Uncensored-4bit"
   "Qwen2.5.1-Coder-7B-Instruct-4bit"
-  "Qwen2.5.1-Coder-7B-Instruct-8bit"
+  "granite-34b-code-instruct-4bit"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
