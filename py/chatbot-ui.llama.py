@@ -33,8 +33,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_PATH = os.path.join(SCRIPT_DIR, "../hf_models/")
 
 # Set the current model
-# CURRENT_T_MODEL = "Qwen2.5-7B-Instruct-Uncensored-4bit"
-DEFAULT_T_MODEL = "granite-34b-code-instruct-4bit"
+DEFAULT_T_MODEL = "Qwen2.5-7B-Instruct-Uncensored-4bit"
 
 model = None
 tokenizer = None
