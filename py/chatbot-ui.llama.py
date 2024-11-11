@@ -280,7 +280,8 @@ async def completions(request: Request, body: RequestBody):
                         }
                     }
                     #yield f"data: {json.dumps({'choices': [], 'usage': usage})}\n\n"
-                    yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': 'stop', 'usage': None}]})}\n\n"
+                    yield f"data: {json.dumps({'choices': [{'delta': {'content': None}, 'finish_reason': 'stop', 'usage': None}]})}\n\n"
+                    yield f"data: [DONE]\n\n"
                     is_stream_open = False
             except Exception as e:
                 if is_stream_open:
