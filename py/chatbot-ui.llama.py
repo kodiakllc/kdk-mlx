@@ -288,7 +288,7 @@ async def completions(request: Request, body: RequestBody):
                     yield f"data: {json.dumps({'choices': [{'delta': {'content': f'Error: {str(e)}'}, 'finish_reason': 'error'}], 'usage': None})}\n\n"
                     is_stream_open = False
 
-        return StreamingResponse(event_stream(), media_type="text/event-stream")
+        return StreamingResponse(event_stream(), media_type="application/json")
     else:
         response_content = "".join(generate_content(prompt, body.max_tokens, stream=False))
         prompt_tokens = len(tokenizer.encode(prompt))
