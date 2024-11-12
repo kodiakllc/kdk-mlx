@@ -129,6 +129,7 @@ local_models = {
     "object": "list",
     "data": [
         {"id": "Qwen2.5-7B-Instruct-Uncensored-4bit", "object": "model", "created": 1715367049, "owned_by": "system"},
+        {"id": "Qwen2.5-Coder-32B-Instruct-4bit", "object": "model", "created": 1715367049, "owned_by": "system"},
         {"id": "Qwen2.5.1-Coder-7B-Instruct-4bit", "object": "model", "created": 1715367049, "owned_by": "system"}
     ]
 }
