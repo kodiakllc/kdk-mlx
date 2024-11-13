@@ -427,6 +427,30 @@ Content-Type: application/json; charset=utf-8
         },
         {
             "capabilities": {
+                "family": "Qwen2.5-Coder-34B-Instruct-4bit",
+                "limits": {
+                    "max_context_window_tokens": 128000,
+                    "max_output_tokens": 128000,
+                    "max_prompt_tokens": 64000
+                },
+                "object": "model_capabilities",
+                "supports": {
+                    "parallel_tool_calls": true,
+                    "tool_calls": true
+                },
+                "tokenizer": "cl100k_base",
+                "type": "chat"
+            },
+            "id": "Qwen2.5-Coder-34B-Instruct-4bit",
+            "model_picker_enabled": true,
+            "name": "Qwen 2.5 [ 34B ] (Coder,Instruct,4bit)",
+            "object": "model",
+            "preview": false,
+            "vendor": "Azure OpenAI",
+            "version": "Qwen2.5-Coder-34B-Instruct-4bit"
+        },
+        {
+            "capabilities": {
                 "family": "gpt-4-turbo",
                 "limits": {
                     "max_context_window_tokens": 128000,
