@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 class LogRequestBodyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         body = await request.body()
-        logger.info(f"Request body: {body.decode('utf-8')}")
+        if body:
+            logger.info(f"Request body: {body.decode('utf-8')}")
+        else:
+            logger.info("Request body is empty or None")
         response = await call_next(request)
         return response
 
@@ -33,7 +36,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_PATH = os.path.join(SCRIPT_DIR, "../hf_models/")
 
 # Set the current model
-DEFAULT_T_MODEL = "Qwen2.5-7B-Instruct-Uncensored-4bit"
+DEFAULT_T_MODEL = "Qwen2.5.1-Coder-7B-Instruct-4bit"
 
 model = None
 tokenizer = None
@@ -110,9 +113,9 @@ class ModelsResponse(BaseModel):
     data: List[Model]
 
 generation_args = {
-    "temp": 0.7,
-    "repetition_penalty": 1.2,
-    "repetition_context_size": 45,
+    "temp": 0.1,
+    "repetition_penalty": 1.25,
+    "repetition_context_size": 30,
     "top_p": 0.9
 }
 
@@ -194,6 +197,11 @@ def is_local_model(model_id: str):
     is_local_model = any(model['id'] == model_id for model in local_models['data'])
     return is_local_model
 
+chat_config = {
+    "modify_generation_args": False,
+    "allow_model_reload": False
+}
+
 @app.post("/v1/chat/completions")
 async def completions(request: Request, body: RequestBody):
     if not is_model_supported(body.model):
@@ -204,7 +212,7 @@ async def completions(request: Request, body: RequestBody):
             load_model(None)
         else:
             load_model(body.model)
-    elif current_model_id != body.model and is_local_model(body.model):
+    elif current_model_id != body.model and is_local_model(body.model) and chat_config["allow_model_reload"] is True:
         load_model(body.model)
 
     messages = body.messages
@@ -218,34 +226,35 @@ async def completions(request: Request, body: RequestBody):
         else:
             transformed_messages.append({"role": message.role, "content": message.content})
 
-    # Handle frequency_penalty
-    frequency_logit_bias = {}
-    if body.frequency_penalty:
-        frequency_logit_bias = get_logit_bias_for_frequency_penalty(transformed_messages, body.frequency_penalty)
+    if chat_config["modify_generation_args"] is True:
+        # Handle frequency_penalty
+        frequency_logit_bias = {}
+        if body.frequency_penalty:
+            frequency_logit_bias = get_logit_bias_for_frequency_penalty(transformed_messages, body.frequency_penalty)
 
-    # Handle presence_penalty
-    presence_logit_bias = {}
-    if body.presence_penalty:
-        presence_logit_bias = get_logit_bias_for_presence_penalty(transformed_messages, body.presence_penalty)
+        # Handle presence_penalty
+        presence_logit_bias = {}
+        if body.presence_penalty:
+            presence_logit_bias = get_logit_bias_for_presence_penalty(transformed_messages, body.presence_penalty)
 
-    # Combine logit biases
-    combined_logit_bias = combine_logit_biases(frequency_logit_bias, presence_logit_bias)
-    if combined_logit_bias:
-        generation_args["logit_bias"] = combined_logit_bias
-    else:
-        generation_args.pop("logit_bias", None)
+        # Combine logit biases
+        combined_logit_bias = combine_logit_biases(frequency_logit_bias, presence_logit_bias)
+        if combined_logit_bias:
+            generation_args["logit_bias"] = combined_logit_bias
+        else:
+            generation_args.pop("logit_bias", None)
 
-    # Handle temperature
-    if body.temperature is not None:
-        generation_args["temp"] = body.temperature
-    else:
-        generation_args["temp"] = 0.7
-    
-    # Handle top_p
-    if body.top_p is not None:
-        generation_args["top_p"] = body.top_p
-    else:
-        generation_args["top_p"] = 0.9
+        # Handle temperature
+        if body.temperature is not None:
+            generation_args["temp"] = body.temperature
+        else:
+            generation_args["temp"] = 0.7
+        
+        # Handle top_p
+        if body.top_p is not None:
+            generation_args["top_p"] = body.top_p
+        else:
+            generation_args["top_p"] = 0.9
 
     if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:
         prompt = tokenizer.apply_chat_template(transformed_messages, tokenize=False, add_generation_prompt=True)
@@ -325,6 +334,50 @@ async def completions(request: Request, body: RequestBody):
         logger.info(f"Response (NOT streaming): {response_data}")
         response = ChatCompletionResponse(**response_data)
         return response
+    
+@app.post("/v1/engines/copilot-codex/completions")
+async def codex_completions(request: Request, body: RequestBody):
+    # Combine prompt and suffix
+    full_prompt = body.prompt + body.suffix
+
+    def create_event_stream():
+        is_stream_open = True
+        try:
+            for chunk in generate_content(full_prompt, body.max_tokens):
+                if chunk.strip() == "[DONE]":
+                    break
+                if not is_stream_open:
+                    break
+                if chunk.strip().endswith("[DONE]"):
+                    chunk = chunk.strip()[:-6]
+                    is_stream_open = False
+                yield f"data: {json.dumps({'choices': [{'text': chunk, 'index': 0, 'finish_reason': None, 'logprobs': None, 'p': 'aa'}]})}\n\n"
+            if is_stream_open:
+                yield f"data: {json.dumps({'choices': [{'text': None, 'index': 0, 'finish_reason': 'stop', 'logprobs': None, 'p': 'aa'}]})}\n\n"
+                yield "data: [DONE]\n\n"
+                is_stream_open = False
+        except Exception as e:
+            if is_stream_open:
+                yield f"data: {json.dumps({'choices': [{'text': f'Error: {str(e)}', 'index': 0, 'finish_reason': 'error', 'logprobs': None, 'p': 'aa'}]})}\n\n"
+                is_stream_open = False
+
+    if body.stream:
+        return StreamingResponse(create_event_stream(), media_type="application/json")
+    else:
+        response_content = "".join(generate_content(full_prompt, body.max_tokens, stream=False))
+        response_data = {
+            "id": "cmpl-AU5fdRbH8AIr5G5pGH7dU6aYZcBOJ",
+            "created": int(time.time()),
+            "model": "gpt-35-turbo",
+            "choices": [{
+                "text": response_content,
+                "index": 0,
+                "finish_reason": "stop",
+                "logprobs": None,
+                "p": "aa"
+            }]
+        }
+        return response_data
     
 @app.get("/v1/models", response_model=ModelsResponse)
 async def get_models():
