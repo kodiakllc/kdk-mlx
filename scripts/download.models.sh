@@ -8,6 +8,7 @@ models=(
   "Qwen2.5-7B-Instruct-Uncensored-4bit"
   "Qwen2.5.1-Coder-7B-Instruct-4bit"
   "Qwen2.5-Coder-32B-Instruct-4bit"
+  "DeepSeek-R1-Distill-Qwen-32B-4bit"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
