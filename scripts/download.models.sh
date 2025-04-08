@@ -2,9 +2,9 @@
 
 # List of models to download
 models=(
-  "Llama-3.2-3B-Instruct"
-  "Llama-3.2-11B-Vision-Instruct-4bit"
-  "Mistral-Nemo-Instruct-2407-4bit"
+#  "Llama-3.2-3B-Instruct"
+#  "Llama-3.2-11B-Vision-Instruct-4bit"
+#  "Mistral-Nemo-Instruct-2407-4bit"
   "Qwen2.5-7B-Instruct-Uncensored-4bit"
   "Qwen2.5.1-Coder-7B-Instruct-4bit"
   "Qwen2.5-Coder-32B-Instruct-4bit"
