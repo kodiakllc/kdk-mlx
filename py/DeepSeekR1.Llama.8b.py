@@ -22,7 +22,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_PATH = os.path.join(SCRIPT_DIR, "../hf_models/")
 
 # Set the current model
-CURRENT_T_MODEL = "DeepSeek-R1-Distill-Qwen-32B-4bit"
+CURRENT_T_MODEL = "DeepSeek-R1-Distill-Llama-8B-4bit"
 
 # Init the model and tokenizer
 model = None
@@ -140,7 +140,7 @@ while True:
     # Check if we have loaded the model
     if model is None or tokenizer is None:
         print(f"{Colors.YELLOW}Loading model...{Colors.RESET}")
-        model, tokenizer = load(MODELS_PATH + CURRENT_T_MODEL)
+        model, tokenizer = load(path_or_hf_repo = MODELS_PATH + CURRENT_T_MODEL, lazy = True)
         print(f"{Colors.GREEN}Model loaded!{Colors.RESET}")
 
     # Apply chat template if available
