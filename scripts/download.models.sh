@@ -9,8 +9,9 @@ models=(
   "Qwen2.5.1-Coder-7B-Instruct-4bit"
   "Qwen2.5-Coder-32B-Instruct-4bit"
   "DeepSeek-R1-Distill-Qwen-32B-4bit"
-  #"Llama-4-Maverick-17B-16E-Instruct-4bit"
+#  "Llama-4-Maverick-17B-16E-Instruct-4bit"
   "meta-llama-Llama-4-Scout-17B-16E-4bit"
+  "DeepSeek-R1-Distill-Llama-8B-4bit"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
