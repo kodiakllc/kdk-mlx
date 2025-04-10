@@ -140,7 +140,7 @@ while True:
     # Check if we have loaded the model
     if model is None or tokenizer is None:
         print(f"{Colors.YELLOW}Loading model...{Colors.RESET}")
-        model, tokenizer = load(MODELS_PATH + CURRENT_T_MODEL)
+        model, tokenizer = load(path_or_hf_repo = MODELS_PATH + CURRENT_T_MODEL, lazy = True)
         print(f"{Colors.GREEN}Model loaded!{Colors.RESET}")
 
     # Apply chat template if available

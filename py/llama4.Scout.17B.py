@@ -56,7 +56,7 @@ while True:
 
     # Check if we have loaded the model
     if model is None or tokenizer is None:
-        model, tokenizer = load(MODELS_PATH + CURRENT_T_MODEL)
+        model, tokenizer = load(path_or_hf_repo = MODELS_PATH + CURRENT_T_MODEL, lazy = True)
 
     # Apply chat template if available
     if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:

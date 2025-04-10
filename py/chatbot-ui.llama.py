@@ -46,11 +46,11 @@ def load_model(model_id: str):
     global model, tokenizer, current_model_id
     if model_id == None:
         logger.info(f"### 🔃 Loading default model: {DEFAULT_T_MODEL}")
-        model, tokenizer = load(MODELS_PATH + DEFAULT_T_MODEL)
+        model, tokenizer = load(path_or_hf_repo=MODELS_PATH + DEFAULT_T_MODEL, lazy=True)
         current_model_id = DEFAULT_T_MODEL
     else:
         logger.info(f"### 🔃 Loading model: {model_id}")
-        model, tokenizer = load(MODELS_PATH + model_id)
+        model, tokenizer = load(path_or_hf_repo=MODELS_PATH + model_id, lazy=True)
         current_model_id = model_id
 
 class Content(BaseModel):
@@ -113,11 +113,12 @@ class ModelsResponse(BaseModel):
     data: List[Model]
 
 generation_args = {
-    "temp": 0.1,
+    "temperature": 0.1,
     "repetition_penalty": 1.25,
     "repetition_context_size": 30,
     "top_p": 0.9
 }
+generation_args = {}
 
 openai_models = {
     "object": "list",
@@ -133,7 +134,10 @@ local_models = {
     "data": [
         {"id": "Qwen2.5-7B-Instruct-Uncensored-4bit", "object": "model", "created": 1715367049, "owned_by": "system"},
         {"id": "Qwen2.5-Coder-32B-Instruct-4bit", "object": "model", "created": 1715367049, "owned_by": "system"},
-        {"id": "Qwen2.5.1-Coder-7B-Instruct-4bit", "object": "model", "created": 1715367049, "owned_by": "system"}
+        {"id": "Qwen2.5.1-Coder-7B-Instruct-4bit", "object": "model", "created": 1715367049, "owned_by": "system"},
+        {"id": "DeepSeek-R1-Distill-Llama-8B-4bit", "object": "model", "created": 1715367049, "owned_by": "system"},
+        {"id": "DeepSeek-R1-Distill-Qwen-32B-4bit", "object": "model", "created": 1715367049, "owned_by": "system"},
+        {"id": "meta-llama-Llama-4-Scout-17B-16E-4bit", "object": "model", "created": 1715367049, "owned_by": "system"}
     ]
 }
 
@@ -176,15 +180,15 @@ def combine_logit_biases(bias1: dict, bias2: dict) -> dict:
             combined_bias[token] = bias
     return combined_bias
 
-def generate_content(prompt: str, max_tokens: int, stream: bool = True) -> Generator[str, None, None]:
+def generate_content(prompt: str, max_tokens: int, stream: bool = True):
+    global model, tokenizer
     if stream:
-        for t in stream_generate(
-            model, tokenizer, prompt=prompt, max_tokens=max_tokens, **generation_args
-        ):
-            yield from t
+        response = stream_generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens, **generation_args)
+        for token in response:
+            yield token.text
     else:
         response = generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens, **generation_args)
-        yield response
+        yield response.text
 
 def is_model_supported(model_id: str):
     is_openai_model = any(model['id'] == model_id for model in openai_models['data'])
@@ -246,9 +250,9 @@ async def completions(request: Request, body: RequestBody):
 
         # Handle temperature
         if body.temperature is not None:
-            generation_args["temp"] = body.temperature
+            generation_args["temperature"] = body.temperature
         else:
-            generation_args["temp"] = 0.7
+            generation_args["temperature"] = 0.7
         
         # Handle top_p
         if body.top_p is not None:
