@@ -1,5 +1,6 @@
 import os
 from mlx_lm import load, generate, stream_generate
+from mlx_lm.sample_utils import make_sampler
 from collections.abc import Generator
 
 # ANSI color codes for terminal output
@@ -47,13 +48,15 @@ Always think through your responses carefully before answering, and make sure to
 
 messages = [{"role": "system", "content": system_prompt}]
 
-generation_args = {
-    "temperature": 0.7,
-    "repetition_penalty": 1.2,
-    "repetition_context_size": 20,
+# Define sampler parameters
+sampler_params = {
+    "temp": 0.7,
     "top_p": 0.95,
+    # Optional parameters
+    "min_p": 0.05,
+    "min_tokens_to_keep": 5,
+    "top_k": 50
 }
-generation_args = {}
 
 def generate_content(
     prompt: str,
@@ -61,8 +64,12 @@ def generate_content(
     adapter: str | None = None,
 ) -> Generator[str, None, None]:
     global model, tokenizer
+    
+    # Create sampler with defined parameters
+    sampler = make_sampler(**sampler_params)
+    
     response = stream_generate(
-        model, tokenizer, prompt=prompt, max_tokens=max_tokens, **generation_args
+        model, tokenizer, prompt=prompt, max_tokens=max_tokens, sampler=sampler
     )
     for token in response:
         yield token.text

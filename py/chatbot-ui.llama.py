@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Union, Optional
 import os
 from mlx_lm import load, stream_generate, generate
+from mlx_lm.sample_utils import make_sampler
 from collections.abc import Generator
 import logging
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -44,6 +45,16 @@ current_model_id = None
 
 # Flag to enable/disable tool responses - SET TO FALSE TO FIX LOOPING ISSUE
 ENABLE_TOOL_RESPONSES = False
+
+# Define sampler parameters
+sampler_params = {
+    "temp": 0.1,
+    "top_p": 0.9,
+    # Optional parameters
+    "min_p": 0.05,
+    "min_tokens_to_keep": 5,
+    "top_k": 50
+}
 
 def load_model(model_id: str):
     global model, tokenizer, current_model_id
@@ -156,14 +167,6 @@ class ModelsResponse(BaseModel):
     object: str
     data: List[Model]
 
-generation_args = {
-    "temperature": 0.1,
-    "repetition_penalty": 1.25,
-    "repetition_context_size": 30,
-    "top_p": 0.9
-}
-generation_args = {}
-
 openai_models = {
     "object": "list",
     "data": [
@@ -258,12 +261,16 @@ def extract_thinking(text: str):
 
 def generate_content(prompt: str, max_tokens: int, stream: bool = True):
     global model, tokenizer
+    
+    # Create sampler with defined parameters
+    sampler = make_sampler(**sampler_params)
+    
     if stream:
-        response = stream_generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens, **generation_args)
+        response = stream_generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens, sampler=sampler)
         for token in response:
             yield token.text
     else:
-        response = generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens, **generation_args)
+        response = generate(model, tokenizer, prompt=prompt, max_tokens=max_tokens, sampler=sampler)
         yield response.text
 
 def create_tool_response(tool_name: str, arguments: dict):
@@ -362,21 +369,21 @@ async def completions(request: Request, body: RequestBody):
         # Combine logit biases
         combined_logit_bias = combine_logit_biases(frequency_logit_bias, presence_logit_bias)
         if combined_logit_bias:
-            generation_args["logit_bias"] = combined_logit_bias
+            sampler_params["logit_bias"] = combined_logit_bias
         else:
-            generation_args.pop("logit_bias", None)
+            sampler_params.pop("logit_bias", None)
 
         # Handle temperature
         if body.temperature is not None:
-            generation_args["temperature"] = body.temperature
+            sampler_params["temp"] = body.temperature
         else:
-            generation_args["temperature"] = 0.7
+            sampler_params["temp"] = 0.7
         
         # Handle top_p
         if body.top_p is not None:
-            generation_args["top_p"] = body.top_p
+            sampler_params["top_p"] = body.top_p
         else:
-            generation_args["top_p"] = 0.9
+            sampler_params["top_p"] = 0.9
 
     if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:
         prompt = tokenizer.apply_chat_template(transformed_messages, tokenize=False, add_generation_prompt=True)
