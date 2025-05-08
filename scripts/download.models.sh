@@ -12,6 +12,8 @@ models=(
 #  "Llama-4-Maverick-17B-16E-Instruct-4bit"
   "meta-llama-Llama-4-Scout-17B-16E-4bit"
   "DeepSeek-R1-Distill-Llama-8B-4bit"
+  "Qwen3-32B-4bit"
+  "DeepSeek-R1-Distill-Qwen-14B-4bit"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"

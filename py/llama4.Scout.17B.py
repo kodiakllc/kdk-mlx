@@ -66,5 +66,5 @@ while True:
         break
 
     # Stream response and capture it
-    response = stream_content(prompt, 1024)
+    response = stream_content(prompt, 8192)
     messages.append({"role": "assistant", "content": response})
