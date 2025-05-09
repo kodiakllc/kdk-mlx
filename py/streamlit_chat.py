@@ -173,6 +173,7 @@ def extract_thinking(full_text):
     
     # If we're still streaming and no </think> tag yet, assume everything is thinking
     # We'll consider it all as thinking content until we get a </think> tag
+    # Return None as the thinking content to indicate we're still in thinking mode
     return full_text, ""
 
 def clear_conversation():
@@ -364,7 +365,10 @@ def main():
                             {thinking}
                         </div>
                         """
-                    display_text += answer if answer else ""
+                    
+                    # Only add the answer if we have one (i.e., we've processed a </think> tag)
+                    if answer:
+                        display_text += answer
                     
                     message_placeholder.markdown(display_text, unsafe_allow_html=True)
                     time.sleep(0.001)  # Small delay to reduce CPU usage
@@ -372,7 +376,9 @@ def main():
                 # Special handling for end of response
                 # If we never encountered a </think> tag, assume all content is the answer
                 if "</think>" not in full_response:
-                    message_placeholder.markdown(full_response, unsafe_allow_html=True)
+                    # Clean up any partial thinking tags that might be causing display issues
+                    clean_response = re.sub(r"<think>|</think>", "", full_response)
+                    message_placeholder.markdown(clean_response, unsafe_allow_html=True)
                 
                 # Add assistant response to chat history
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
