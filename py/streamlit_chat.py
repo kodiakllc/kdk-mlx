@@ -114,6 +114,17 @@ def load_selected_model(model_name):
         st.success(f"Model {model_name} already loaded!")
         return
     
+    # Unload the previous model if it exists
+    if st.session_state.model is not None:
+        with st.spinner(f"Unloading previous model {st.session_state.current_model}..."):
+            # Set references to None to allow garbage collection
+            st.session_state.model = None
+            st.session_state.tokenizer = None
+            # Force Python garbage collection to free memory
+            import gc
+            gc.collect()
+            st.info(f"Previous model {st.session_state.current_model} unloaded")
+    
     with st.spinner(f"Loading model {model_name}..."):
         st.session_state.model, st.session_state.tokenizer = load(
             path_or_hf_repo=MODELS_PATH + model_name, 
