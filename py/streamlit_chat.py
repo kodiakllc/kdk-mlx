@@ -150,30 +150,26 @@ def generate_content(prompt, max_tokens=None):
     return response
 
 def extract_thinking(full_text):
-    """Extract thinking content assuming response always starts with thinking until a </think> tag"""
-    # Find all thinking blocks (content between <think> and </think>)
-    thinking_pattern = r"<think>(.*?)</think>"
-    thinking_matches = re.findall(thinking_pattern, full_text, re.DOTALL)
+    """Extract thinking content and answer from text that contains <think>...</think> tags"""
+    # Simple case: If no thinking tags, everything is the answer
+    if "<think>" not in full_text and "</think>" not in full_text:
+        return "", full_text
     
-    # If we have properly formatted thinking blocks, extract those
-    if thinking_matches:
-        thinking_content = "\n".join(thinking_matches)
-        # Remove all thinking sections from the text to get the final answer
-        final_answer = re.sub(thinking_pattern, "", full_text, flags=re.DOTALL).strip()
-        return thinking_content, final_answer
-    
-    # If there's a </think> tag, assume everything before it is thinking
-    elif "</think>" in full_text:
+    # If we have complete thinking blocks
+    if "</think>" in full_text:
+        # Split at the first </think> tag to get everything before it as thinking
         parts = full_text.split("</think>", 1)
-        thinking_content = parts[0].strip()
-        # Remove any <think> tags if they exist
-        thinking_content = re.sub(r"<think>", "", thinking_content, flags=re.DOTALL).strip()
-        final_answer = parts[1].strip() if len(parts) > 1 else ""
-        return thinking_content, final_answer
+        thinking = parts[0].replace("<think>", "").strip()
+        answer = parts[1].strip() if len(parts) > 1 else ""
+        return thinking, answer
     
-    # If we're still streaming and no </think> tag yet, assume everything is thinking
-    # We'll consider it all as thinking content until we get a </think> tag
-    # Return None as the thinking content to indicate we're still in thinking mode
+    # If we only have opening <think> but no closing tag yet
+    # (we're still in the thinking part of the response)
+    if "<think>" in full_text and "</think>" not in full_text:
+        thinking = full_text.replace("<think>", "").strip()
+        return thinking, ""
+    
+    # Default fallback case - just return the text as thinking
     return full_text, ""
 
 def clear_conversation():
@@ -347,28 +343,56 @@ def main():
                     enable_thinking=True
                 )
                 
+                # Track transition from thinking to answer
+                in_thinking_mode = True
+                thinking_content = ""
+                answer_content = ""
+                
                 # Stream the response
                 for token in generate_content(prompt_template):
                     token_text = token.text if hasattr(token, 'text') else token
                     full_response += token_text
                     
-                    # Extract thinking and answer parts for display
-                    thinking, answer = extract_thinking(full_response)
+                    # Check if we've reached the end of a thinking block
+                    if in_thinking_mode and "</think>" in full_response:
+                        # Split at the </think> tag
+                        parts = full_response.split("</think>", 1)
+                        
+                        # Extract thinking content (remove opening <think> tag if present)
+                        thinking_content = parts[0].replace("<think>", "").strip()
+                        
+                        # Start tracking answer content separately
+                        answer_content = parts[1].strip() if len(parts) > 1 else ""
+                        in_thinking_mode = False
+                    elif in_thinking_mode:
+                        # Still in thinking mode, update thinking content
+                        thinking_content = full_response.replace("<think>", "").strip()
+                    else:
+                        # Already in answer mode, update answer content
+                        if "<think>" in token_text:
+                            # If a new thinking block starts, reset to thinking mode
+                            in_thinking_mode = True
+                            parts = full_response.split("<think>", 1)
+                            answer_content = parts[0].strip()
+                            thinking_content = parts[1].replace("</think>", "").strip()
+                        else:
+                            # Just append to answer
+                            answer_content = full_response.split("</think>", 1)[1].strip()
                     
-                    # Update display
+                    # Build display text
                     display_text = ""
-                    if thinking:
+                    if thinking_content:
                         # Style thinking section with custom HTML
                         display_text += f"""
                         <div class="thinking-box">
                             <div class="thinking-header">🧠 Thinking...</div>
-                            {thinking}
+                            {thinking_content}
                         </div>
                         """
                     
-                    # Only add the answer if we have one (i.e., we've processed a </think> tag)
-                    if answer:
-                        display_text += answer
+                    # Add answer if available
+                    if answer_content:
+                        display_text += answer_content
                     
                     message_placeholder.markdown(display_text, unsafe_allow_html=True)
                     time.sleep(0.001)  # Small delay to reduce CPU usage
