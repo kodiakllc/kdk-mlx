@@ -91,6 +91,13 @@ if "tokenizer" not in st.session_state:
     st.session_state.tokenizer = None
 if "current_model" not in st.session_state:
     st.session_state.current_model = None
+# Performance metrics
+if "token_metrics" not in st.session_state:
+    st.session_state.token_metrics = {
+        "tokens_generated": 0,
+        "generation_time": 0,
+        "tokens_per_second": 0
+    }
 # Base sampler parameters (always enabled)
 if "base_params" not in st.session_state:
     st.session_state.base_params = {
@@ -124,6 +131,13 @@ def load_selected_model(model_name):
             import gc
             gc.collect()
             st.info(f"Previous model {st.session_state.current_model} unloaded")
+    
+    # Reset token metrics when switching models
+    st.session_state.token_metrics = {
+        "tokens_generated": 0,
+        "generation_time": 0,
+        "tokens_per_second": 0
+    }
     
     with st.spinner(f"Loading model {model_name}..."):
         st.session_state.model, st.session_state.tokenizer = load(
@@ -324,6 +338,10 @@ def main():
     # Create message container
     create_message_container()
     
+    # Show previous generation metrics in a small format at the bottom of the chat
+    if st.session_state.token_metrics["tokens_per_second"] > 0:
+        st.markdown(f"<div style='text-align: right; color: gray; font-size: 0.8em; margin-top: 5px; margin-bottom: 5px;'>💨 <span style='font-weight: bold;'>{st.session_state.token_metrics['tokens_per_second']:.1f}</span> tokens/sec | <span style='font-weight: bold;'>{st.session_state.token_metrics['tokens_generated']}</span> tokens in {st.session_state.token_metrics['generation_time']:.1f}s</div>", unsafe_allow_html=True)
+    
     # Chat input
     if prompt := st.chat_input("Type your message here"):
         if st.session_state.model is None:
@@ -359,10 +377,32 @@ def main():
                 thinking_content = ""
                 answer_content = ""
                 
+                # Token generation metrics
+                token_counter = 0
+                start_time = time.time()
+                token_speed_container = st.empty()
+                
                 # Stream the response
                 for token in generate_content(prompt_template):
                     token_text = token.text if hasattr(token, 'text') else token
                     full_response += token_text
+                    
+                    # Update token counter and display metrics (every 10 tokens to reduce UI overhead)
+                    token_counter += 1
+                    if token_counter % 10 == 0:
+                        elapsed = time.time() - start_time
+                        if elapsed > 0:
+                            tokens_per_second = token_counter / elapsed
+                            token_speed_container.markdown(f"""
+                            <div style='position: fixed; bottom: 120px; right: 20px; background: rgba(0,0,0,0.15); 
+                                 padding: 8px 15px; border-radius: 6px; font-size: 16px; z-index: 1000; 
+                                 box-shadow: 0 3px 10px rgba(0,0,0,0.2); border-left: 3px solid #50fa7b;'>
+                                <div style='font-weight: bold; margin-bottom: 2px;'>💨 Generation Speed</div>
+                                <div><span style='font-weight: bold; font-size: 18px;'>{tokens_per_second:.1f}</span> tokens/sec 
+                                <span style='color: #50fa7b; margin-left: 5px;'>↑</span></div>
+                                <div style='font-size: 14px; opacity: 0.8;'>{token_counter} tokens in {elapsed:.1f}s</div>
+                            </div>
+                            """, unsafe_allow_html=True)
                     
                     # Check if we've reached the end of a thinking block
                     if in_thinking_mode and "</think>" in full_response:
@@ -414,6 +454,37 @@ def main():
                     # Clean up any partial thinking tags that might be causing display issues
                     clean_response = re.sub(r"<think>|</think>", "", full_response)
                     message_placeholder.markdown(clean_response, unsafe_allow_html=True)
+                
+                # Clear the temporary token speed display
+                token_speed_container.empty()
+                
+                # Final token metrics
+                final_time = time.time() - start_time
+                if final_time > 0 and token_counter > 0:
+                    final_tokens_per_second = token_counter / final_time
+                    # Store metrics in session state
+                    st.session_state.token_metrics = {
+                        "tokens_generated": token_counter,
+                        "generation_time": final_time,
+                        "tokens_per_second": final_tokens_per_second
+                    }
+                    
+                    # Add the final metrics to the displayed response
+                    metrics_html = f"""
+                    <div style='background: rgba(0,0,0,0.05); padding: 8px; border-radius: 6px; margin-top: 10px; border-left: 3px solid #50fa7b;'>
+                        <div style='font-weight: bold; font-size: 14px;'>💨 Generation metrics</div>
+                        <div>
+                            <span style='font-weight: bold; font-size: 16px;'>{final_tokens_per_second:.1f}</span> tokens/sec
+                            <span style='color: #50fa7b; margin-left: 3px;'>↑</span> | 
+                            <span style='font-weight: bold;'>{token_counter}</span> tokens generated in {final_time:.1f}s
+                        </div>
+                    </div>
+                    """
+                    
+                    # Append metrics to the last message that's displayed
+                    # This ensures it appears as part of the assistant's response
+                    full_display = display_text + metrics_html
+                    message_placeholder.markdown(full_display, unsafe_allow_html=True)
                 
                 # Add assistant response to chat history
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
