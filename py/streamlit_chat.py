@@ -57,11 +57,23 @@ MODELS_PATH = os.path.join(SCRIPT_DIR, "../hf_models/")
 
 # Available models
 AVAILABLE_MODELS = [
-    "gemma-3-12b-it-qat-4bit",
+    ##########################################
+    ### Gemma 3
+    "gemma-3-4b-it-4bit",
+    "gemma-3-12b-it-4bit",
+    # Quantization Aware Training (QAT)
     "gemma-3-4b-it-qat-4bit",
+    "gemma-3-12b-it-qat-4bit",
+    # Distilled Weight Quantized (DWQ)
+    "gemma-3-4b-it-4bit-DWQ",
+    "gemma-3-12b-it-4bit-DWQ",
+    ##########################################
+    ### DeepSeek
     "DeepSeek-R1-Distill-Llama-8B-4bit",
     "DeepSeek-R1-Distill-Qwen-14B-4bit",
     "DeepSeek-R1-Distill-Qwen-32B-4bit",
+    ##########################################
+    ### Qwen
     "Qwen3-32B-4bit"
 ]
 
