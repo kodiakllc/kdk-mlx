@@ -58,6 +58,7 @@ MODELS_PATH = os.path.join(SCRIPT_DIR, "../hf_models/")
 # Available models
 AVAILABLE_MODELS = [
     "gemma-3-12b-it-qat-4bit",
+    "gemma-3-4b-it-qat-4bit",
     "DeepSeek-R1-Distill-Llama-8B-4bit",
     "DeepSeek-R1-Distill-Qwen-14B-4bit",
     "DeepSeek-R1-Distill-Qwen-32B-4bit",

@@ -15,6 +15,7 @@ models=(
   "Qwen3-32B-4bit"
   "DeepSeek-R1-Distill-Qwen-14B-4bit"
   "gemma-3-12b-it-qat-4bit"
+  "gemma-3-4b-it-qat-4bit"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
