@@ -1,0 +1,36 @@
+---
+license: mit
+library_name: mlx
+tags:
+- mlx
+pipeline_tag: text-generation
+base_model: deepseek-ai/DeepSeek-R1-0528-Qwen3-8B
+---
+
+# mlx-community/DeepSeek-R1-0528-Qwen3-8B-4bit-DWQ
+
+This model [mlx-community/DeepSeek-R1-0528-Qwen3-8B-4bit-DWQ](https://huggingface.co/mlx-community/DeepSeek-R1-0528-Qwen3-8B-4bit-DWQ) was
+converted to MLX format from [deepseek-ai/DeepSeek-R1-0528-Qwen3-8B](https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B)
+using mlx-lm version **0.24.1**.
+
+## Use with mlx
+
+```bash
+pip install mlx-lm
+```
+
+```python
+from mlx_lm import load, generate
+
+model, tokenizer = load("mlx-community/DeepSeek-R1-0528-Qwen3-8B-4bit-DWQ")
+
+prompt = "hello"
+
+if tokenizer.chat_template is not None:
+    messages = [{"role": "user", "content": prompt}]
+    prompt = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True
+    )
+
+response = generate(model, tokenizer, prompt=prompt, verbose=True)
+```

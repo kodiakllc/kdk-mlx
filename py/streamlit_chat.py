@@ -74,7 +74,12 @@ AVAILABLE_MODELS = [
     "DeepSeek-R1-Distill-Qwen-32B-4bit",
     ##########################################
     ### Qwen
-    "Qwen3-32B-4bit"
+    "Qwen3-32B-4bit",
+    ##########################################
+    ### DeepSeek + Qwen
+    "DeepSeek-R1-0528-Qwen3-8B-4bit",
+    "DeepSeek-R1-0528-Qwen3-8B-4bit-DWQ",
+    "DeepSeek-R1-0528-Qwen3-8B-8bit",
 ]
 
 # Default system prompt
@@ -338,7 +343,7 @@ def main():
         
         if st.button("Clear Conversation"):
             clear_conversation()
-            st.experimental_rerun()
+            st.rerun()
     
     # Main chat interface
     st.title("💬 MLX Chat")
