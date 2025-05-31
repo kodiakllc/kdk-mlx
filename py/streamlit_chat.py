@@ -60,11 +60,31 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_PATH = os.path.join(SCRIPT_DIR, "../hf_models/")
 
 def load_available_models():
-    """Load available models from JSON file"""
+    """Load available models from JSON file, excluding non-MLX models"""
     models_json_path = os.path.join(SCRIPT_DIR, "../hf_models/models.json")
+    non_mlx_json_path = os.path.join(SCRIPT_DIR, "../hf_models/non_mlx_models.json")
+    
     try:
         with open(models_json_path, 'r') as f:
-            return json.load(f)
+            all_models = json.load(f)
+            
+        # Load non-MLX models to exclude
+        excluded_models = set()
+        if os.path.exists(non_mlx_json_path):
+            try:
+                with open(non_mlx_json_path, 'r') as f:
+                    non_mlx_data = json.load(f)
+                    excluded_models = set(non_mlx_data.keys())
+            except:
+                pass
+        
+        # Filter out non-MLX models
+        mlx_models = {
+            name: info for name, info in all_models.items() 
+            if name not in excluded_models
+        }
+        
+        return mlx_models
     except FileNotFoundError:
         st.error(f"Models configuration file not found: {models_json_path}")
         return {}
@@ -652,11 +672,74 @@ def main():
                         
                         # Add answer if available
                         if answer_content:
-                            display_text += answer_content
+                            # Try to detect and beautify JSON in answer content
+                            try:
+                                trimmed = answer_content.strip()
+                                if trimmed and (trimmed.startswith('{') or trimmed.startswith('[')):
+                                    json_obj = json.loads(trimmed)
+                                    beautified_json = json.dumps(json_obj, indent=2, ensure_ascii=False)
+                                    display_text += f"\n```json\n{beautified_json}\n```"
+                                else:
+                                    display_text += answer_content
+                            except (json.JSONDecodeError, ValueError):
+                                display_text += answer_content
                     else:
                         # For non-reasoning models, show everything as answer
                         clean_response = re.sub(r"<think>|</think>", "", answer_content)
-                        display_text = clean_response
+                        
+                        # Try to detect and beautify JSON
+                        try:
+                            # First strip whitespace and check if it looks like JSON
+                            trimmed = clean_response.strip()
+                            
+                            # Look for JSON patterns anywhere in the response
+                            json_match = None
+                            if '{' in trimmed or '[' in trimmed:
+                                # Try to find the start of JSON
+                                for i, char in enumerate(trimmed):
+                                    if char in '{[':
+                                        # Try to parse from this position
+                                        potential_json = trimmed[i:]
+                                        try:
+                                            json.loads(potential_json)
+                                            json_match = potential_json
+                                            break
+                                        except:
+                                            continue
+                            
+                            if json_match:
+                                trimmed = json_match
+                            elif trimmed and (trimmed.startswith('{') or trimmed.startswith('[')):
+                                # Clean up common JSON issues
+                                # Remove quotes around the JSON if present
+                                if trimmed.startswith('"') and trimmed.endswith('"'):
+                                    trimmed = trimmed[1:-1]
+                                    # Unescape any escaped quotes
+                                    trimmed = trimmed.replace('\\"', '"')
+                            else:
+                                # No JSON-like content found
+                                raise ValueError("No JSON content detected")
+                            
+                            # Try to fix common malformed JSON patterns
+                            # Count braces to see if there's an imbalance
+                            open_braces = trimmed.count('{')
+                            close_braces = trimmed.count('}')
+                            if close_braces > open_braces:
+                                # Remove extra closing braces from the end
+                                trimmed = trimmed.rstrip('}')
+                                trimmed += '}' * open_braces
+                            
+                            # Try to parse as JSON
+                            json_obj = json.loads(trimmed)
+                            # If successful, beautify it
+                            beautified_json = json.dumps(json_obj, indent=2, ensure_ascii=False)
+                            display_text = f"```json\n{beautified_json}\n```"
+                        except (json.JSONDecodeError, ValueError) as e:
+                            # Not valid JSON, display as is
+                            # Add debug info in console
+                            print(f"JSON parse error: {e}")
+                            print(f"Attempted to parse: {trimmed[:100]}...")
+                            display_text = clean_response
                     
                     message_placeholder.markdown(display_text, unsafe_allow_html=True)
                     time.sleep(0.001)  # Small delay to reduce CPU usage
@@ -678,7 +761,61 @@ def main():
                 elif not is_reasoning_model:
                     # For non-reasoning models, display everything as normal answer
                     clean_response = re.sub(r"<think>|</think>", "", full_response)
-                    message_placeholder.markdown(clean_response, unsafe_allow_html=True)
+                    
+                    # Try to detect and beautify JSON
+                    try:
+                        # First strip whitespace
+                        trimmed = clean_response.strip()
+                        
+                        # Look for JSON patterns anywhere in the response
+                        json_match = None
+                        if '{' in trimmed or '[' in trimmed:
+                            # Try to find the start of JSON
+                            for i, char in enumerate(trimmed):
+                                if char in '{[':
+                                    # Try to parse from this position
+                                    potential_json = trimmed[i:]
+                                    try:
+                                        json.loads(potential_json)
+                                        json_match = potential_json
+                                        break
+                                    except:
+                                        continue
+                        
+                        if json_match:
+                            trimmed = json_match
+                        elif trimmed and (trimmed.startswith('{') or trimmed.startswith('[')):
+                            # Clean up common JSON issues
+                            # Remove quotes around the JSON if present
+                            if trimmed.startswith('"') and trimmed.endswith('"'):
+                                trimmed = trimmed[1:-1]
+                                # Unescape any escaped quotes
+                                trimmed = trimmed.replace('\\"', '"')
+                        else:
+                            # No JSON-like content found
+                            raise ValueError("No JSON content detected")
+                        
+                        # Try to fix common malformed JSON patterns
+                        # Count braces to see if there's an imbalance
+                        open_braces = trimmed.count('{')
+                        close_braces = trimmed.count('}')
+                        if close_braces > open_braces:
+                            # Remove extra closing braces from the end
+                            trimmed = trimmed.rstrip('}')
+                            trimmed += '}' * open_braces
+                        
+                        # Try to parse as JSON
+                        json_obj = json.loads(trimmed)
+                        # If successful, beautify it
+                        beautified_json = json.dumps(json_obj, indent=2, ensure_ascii=False)
+                        display_text = f"```json\n{beautified_json}\n```"
+                    except (json.JSONDecodeError, ValueError) as e:
+                        # Not valid JSON, display as is
+                        print(f"Final JSON parse error: {e}")
+                        print(f"Attempted to parse: {clean_response[:100]}...")
+                        display_text = clean_response
+                        
+                    message_placeholder.markdown(display_text, unsafe_allow_html=True)
                 
                 # Clear the temporary token speed display
                 token_speed_container.empty()
@@ -706,10 +843,12 @@ def main():
                     </div>
                     """
                     
-                    # Append metrics to the last message that's displayed
-                    # This ensures it appears as part of the assistant's response
-                    full_display = display_text + metrics_html
-                    message_placeholder.markdown(full_display, unsafe_allow_html=True)
+                    # Display the main content first
+                    message_placeholder.markdown(display_text, unsafe_allow_html=True)
+                    
+                    # Then display metrics in a separate markdown call
+                    # This avoids mixing code blocks with HTML
+                    st.markdown(metrics_html, unsafe_allow_html=True)
                 
                 # Add assistant response to chat history
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
