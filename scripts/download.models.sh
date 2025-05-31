@@ -35,6 +35,8 @@ models=(
   "gemma-3-4b-it-4bit-DWQ"
   "gemma-3-12b-it-4bit-DWQ"
   ##########################################
+  ### NON-MLX Models
+  "osmosis-ai/Osmosis-Structure-0.6B"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
@@ -44,14 +46,51 @@ source ${PROJECT_ROOT}/mlx_env/bin/activate
 # Base directory where models are stored
 base_dir=${PROJECT_ROOT}/hf_models
 
+# Create non-mlx models tracking file if it doesn't exist
+non_mlx_models_file="$base_dir/non_mlx_models.json"
+if [[ ! -f "$non_mlx_models_file" ]]; then
+  echo "{}" > "$non_mlx_models_file"
+fi
+
 for model_name in "${models[@]}"; do
-  model_dir="$base_dir/$model_name"
+  # Check if this is a non-MLX model (contains "/")
+  if [[ "$model_name" == *"/"* ]]; then
+    # For non-MLX models, extract just the model name for the directory
+    dir_name="${model_name##*/}"
+    model_dir="$base_dir/$dir_name"
+    repo_path="$model_name"
+    is_non_mlx=true
+  else
+    # For MLX models, use the name as-is
+    dir_name="$model_name"
+    model_dir="$base_dir/$model_name"
+    repo_path="mlx-community/$model_name"
+    is_non_mlx=false
+  fi
   
   # Check if model directory exists and contains .safetensors files
   if [[ -d "$model_dir" && -n "$(find "$model_dir" -type f -name '*.safetensors*' -print -quit)" ]]; then
-    echo "Model '$model_name' already exists with .safetensors files. Skipping download."
+    echo "Model '$dir_name' already exists with .safetensors files. Skipping download."
   else
-    echo "Downloading model '$model_name'..."
-    huggingface-cli download --local-dir "$model_dir" mlx-community/"$model_name"
+    echo "Downloading model '$model_name' to '$model_dir'..."
+    huggingface-cli download --local-dir "$model_dir" "$repo_path"
+    
+    # Update non-mlx models tracking file if this is a non-MLX model
+    if [[ "$is_non_mlx" == true ]]; then
+      # Use Python to update the JSON file
+      python3 -c "
+import json
+with open('$non_mlx_models_file', 'r') as f:
+    data = json.load(f)
+data['$dir_name'] = {
+    'repo_path': '$model_name',
+    'type': 'non-mlx',
+    'downloaded': True
+}
+with open('$non_mlx_models_file', 'w') as f:
+    json.dump(data, f, indent=2)
+"
+      echo "Added '$dir_name' to non-MLX models tracking file"
+    fi
   fi
 done
