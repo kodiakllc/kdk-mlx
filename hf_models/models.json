@@ -1,0 +1,159 @@
+{
+  "gemma-3-4b-it-4bit": {
+    "parameters": "4B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Gemma",
+    "version": "3",
+    "type": "base"
+  },
+  "gemma-3-4b-it-qat-4bit": {
+    "parameters": "4B", 
+    "quantization": "4bit",
+    "quantization_options": ["qat"],
+    "base_family": "Gemma",
+    "version": "3",
+    "type": "base"
+  },
+  "gemma-3-4b-it-4bit-DWQ": {
+    "parameters": "4B",
+    "quantization": "4bit", 
+    "quantization_options": ["dwq"],
+    "base_family": "Gemma",
+    "version": "3",
+    "type": "base"
+  },
+  "gemma-3-12b-it-4bit": {
+    "parameters": "12B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Gemma",
+    "version": "3",
+    "type": "base"
+  },
+  "gemma-3-12b-it-qat-4bit": {
+    "parameters": "12B",
+    "quantization": "4bit",
+    "quantization_options": ["qat"],
+    "base_family": "Gemma",
+    "version": "3",
+    "type": "base"
+  },
+  "gemma-3-12b-it-4bit-DWQ": {
+    "parameters": "12B",
+    "quantization": "4bit",
+    "quantization_options": ["dwq"],
+    "base_family": "Gemma",
+    "version": "3",
+    "type": "base"
+  },
+  "DeepSeek-R1-Distill-Llama-8B-4bit": {
+    "parameters": "8B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Llama",
+    "version": "3.1",
+    "type": "distilled",
+    "reasoning": true,
+    "distilled_from": "DeepSeek R1"
+  },
+  "DeepSeek-R1-Distill-Qwen-14B-4bit": {
+    "parameters": "14B",
+    "quantization": "4bit", 
+    "quantization_options": ["standard"],
+    "base_family": "Qwen",
+    "version": "2.5",
+    "type": "distilled",
+    "reasoning": true,
+    "distilled_from": "DeepSeek R1"
+  },
+  "DeepSeek-R1-Distill-Qwen-32B-4bit": {
+    "parameters": "32B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Qwen",
+    "version": "2.5",
+    "type": "distilled",
+    "reasoning": true,
+    "distilled_from": "DeepSeek R1"
+  },
+  "DeepSeek-R1-0528-Qwen3-8B-4bit": {
+    "parameters": "8B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Qwen",
+    "version": "3",
+    "type": "distilled",
+    "reasoning": true,
+    "distilled_from": "DeepSeek R1",
+    "variant": "0528"
+  },
+  "DeepSeek-R1-0528-Qwen3-8B-4bit-DWQ": {
+    "parameters": "8B", 
+    "quantization": "4bit",
+    "quantization_options": ["dwq"],
+    "base_family": "Qwen",
+    "version": "3",
+    "type": "distilled",
+    "distilled_from": "DeepSeek R1",
+    "reasoning": true,
+    "variant": "0528"
+  },
+  "DeepSeek-R1-0528-Qwen3-8B-8bit": {
+    "parameters": "8B",
+    "quantization": "8bit",
+    "quantization_options": ["standard"],
+    "base_family": "Qwen",
+    "version": "3",
+    "type": "distilled",
+    "reasoning": true,
+    "distilled_from": "DeepSeek R1",
+    "variant": "0528"
+  },
+  "Qwen3-32B-4bit": {
+    "parameters": "32B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Qwen",
+    "version": "3",
+    "type": "base",
+    "reasoning": true
+  },
+  "Qwen2.5-7B-Instruct-Uncensored-4bit": {
+    "parameters": "7B",
+    "quantization": "4bit", 
+    "quantization_options": ["standard"],
+    "base_family": "Qwen",
+    "version": "2.5",
+    "type": "specialized",
+    "specialization": "Uncensored"
+  },
+  "Qwen2.5.1-Coder-7B-Instruct-4bit": {
+    "parameters": "7B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Qwen",
+    "version": "2.5.1",
+    "type": "specialized",
+    "specialization": "Coder"
+  },
+  "Qwen2.5-Coder-32B-Instruct-4bit": {
+    "parameters": "32B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Qwen",
+    "version": "2.5",
+    "type": "specialized",
+    "specialization": "Coder"
+  },
+  "meta-llama-Llama-4-Scout-17B-16E-4bit": {
+    "parameters": "17B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Llama",
+    "version": "4",
+    "type": "specialized",
+    "reasoning": true,
+    "specialization": "Scout"
+  }
+}

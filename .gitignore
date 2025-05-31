@@ -1,2 +1,5 @@
 hf_models/**/*.safetensors
 mlx_env/*
+**/__pycache__
+hf_models/hmi_sessions
+CLAUDE.md
