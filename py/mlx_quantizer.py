@@ -2,6 +2,7 @@ import os
 import subprocess
 import tempfile
 import shutil
+import json
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from mlx_lm import convert
@@ -20,9 +21,7 @@ class MLXQuantizer:
         output_name: str,
         q_bits: int = 4,
         q_group_size: int = 64,
-        qat: bool = False,
-        dwq: bool = False,
-        quantize_embeddings: bool = False,
+        mixed_recipe: Optional[str] = None,
         dtype: str = "float16",
         progress_callback: Optional[callable] = None
     ) -> bool:
@@ -34,9 +33,7 @@ class MLXQuantizer:
             output_name: Name for the output directory
             q_bits: Quantization bits (4 or 8)
             q_group_size: Group size for quantization
-            qat: Enable Quantization Aware Training
-            dwq: Enable Distilled Weight Quantization
-            quantize_embeddings: Also quantize embedding layers
+            mixed_recipe: Mixed quantization recipe ('mixed_2_6', 'mixed_3_6', 'mixed_4_6')
             dtype: Output data type
             progress_callback: Function to call for progress updates
             
@@ -49,23 +46,29 @@ class MLXQuantizer:
             if progress_callback:
                 progress_callback("Starting quantization...")
             
-            # Build quantization method string
-            quantization_method = "q4" if q_bits == 4 else "q8"
-            if qat:
-                quantization_method += "_qat"
-            elif dwq:
-                quantization_method += "_dwq"
+            # Debug: Check if path exists
+            if progress_callback:
+                progress_callback(f"Input path: {hf_model_path}")
+                if os.path.exists(hf_model_path):
+                    progress_callback(f"Path exists locally")
+                else:
+                    progress_callback(f"Path does not exist locally - will try as HF repo")
             
             # Use MLX convert function
-            convert(
-                hf_path=hf_model_path,
-                mlx_path=str(output_path),
-                quantize=True,
-                q_bits=q_bits,
-                q_group_size=q_group_size,
-                quantize_embeddings=quantize_embeddings,
-                dtype=dtype
-            )
+            kwargs = {
+                "hf_path": hf_model_path,
+                "mlx_path": str(output_path),
+                "quantize": True,
+                "q_bits": q_bits,
+                "q_group_size": q_group_size,
+                "dtype": dtype
+            }
+            
+            # Add mixed quantization recipe if specified
+            if mixed_recipe:
+                kwargs["quant_predicate"] = mixed_recipe
+                
+            convert(**kwargs)
             
             if progress_callback:
                 progress_callback("Quantization completed successfully!")
@@ -83,9 +86,7 @@ class MLXQuantizer:
         output_name: str,
         q_bits: int = 4,
         q_group_size: int = 64,
-        qat: bool = False,
-        dwq: bool = False,
-        quantize_embeddings: bool = False,
+        mixed_recipe: Optional[str] = None,
         dtype: str = "float16",
         progress_callback: Optional[callable] = None
     ) -> bool:
@@ -105,14 +106,9 @@ class MLXQuantizer:
                 "--dtype", dtype
             ]
             
-            # Add quantization method flags
-            if qat:
-                cmd.append("--qat")
-            elif dwq:
-                cmd.append("--dwq")  # Check if this is the correct flag
-                
-            if quantize_embeddings:
-                cmd.append("--quantize-embeddings")
+            # Add mixed quantization recipe if specified
+            if mixed_recipe:
+                cmd.extend(["--quant-predicate", mixed_recipe])
             
             if progress_callback:
                 progress_callback("Starting CLI quantization...")
@@ -169,14 +165,28 @@ class MLXQuantizer:
         return info
     
     def list_available_models(self) -> List[str]:
-        """List all available quantized models"""
+        """List all available quantized models (excluding non-MLX models)"""
         if not self.models_path.exists():
             return []
+        
+        # Load non-MLX models to exclude
+        excluded_models = set()
+        non_mlx_file = self.models_path / "non_mlx_models.json"
+        if non_mlx_file.exists():
+            try:
+                import json
+                with open(non_mlx_file, 'r') as f:
+                    non_mlx_data = json.load(f)
+                    excluded_models = set(non_mlx_data.keys())
+            except:
+                pass
         
         models = []
         for item in self.models_path.iterdir():
             if item.is_dir() and (item / "config.json").exists():
-                models.append(item.name)
+                # Skip if this is a non-MLX model
+                if item.name not in excluded_models:
+                    models.append(item.name)
         
         return sorted(models)
     
@@ -202,8 +212,8 @@ def create_streamlit_quantizer_ui(quantizer: MLXQuantizer):
         with col1:
             hf_path = st.text_input(
                 "HuggingFace Model Path",
-                placeholder="microsoft/DialoGPT-medium",
-                help="Enter the HuggingFace model path or local path"
+                placeholder="microsoft/phi-2 or /path/to/local/model",
+                help="Enter a HuggingFace repo ID (e.g., 'microsoft/phi-2') or absolute path to a local model directory"
             )
             
             output_name = st.text_input(
@@ -218,14 +228,16 @@ def create_streamlit_quantizer_ui(quantizer: MLXQuantizer):
         with col2:
             dtype = st.selectbox("Data Type", ["float16", "bfloat16"], index=0)
             
-            # Quantization method - mutually exclusive
-            quant_method = st.radio(
+            # Mixed quantization recipe
+            mixed_recipe = st.selectbox(
                 "Quantization Method",
-                ["Standard", "QAT", "DWQ"],
-                help="QAT: Quantization Aware Training, DWQ: Distilled Weight Quantization"
+                ["Standard", "mixed_2_6", "mixed_3_6", "mixed_4_6"],
+                help="Standard: Uniform quantization. Mixed: Variable bits for different layers (2-6, 3-6, or 4-6 bits)"
             )
             
-            quantize_embeddings = st.checkbox("Quantize Embeddings", value=False)
+            # Convert selection to None if Standard
+            mixed_recipe = None if mixed_recipe == "Standard" else mixed_recipe
+            
             use_cli = st.checkbox("Use CLI Method", value=False, 
                                 help="Use command line interface instead of Python API")
         
@@ -233,10 +245,6 @@ def create_streamlit_quantizer_ui(quantizer: MLXQuantizer):
             if not hf_path or not output_name:
                 st.error("Please provide both model path and output name")
                 return
-            
-            # Set quantization flags
-            qat = quant_method == "QAT"
-            dwq = quant_method == "DWQ"
             
             # Create progress components
             progress_bar = st.progress(0)
@@ -260,9 +268,7 @@ def create_streamlit_quantizer_ui(quantizer: MLXQuantizer):
                     output_name=output_name,
                     q_bits=q_bits,
                     q_group_size=q_group_size,
-                    qat=qat,
-                    dwq=dwq,
-                    quantize_embeddings=quantize_embeddings,
+                    mixed_recipe=mixed_recipe,
                     dtype=dtype,
                     progress_callback=progress_callback
                 )
@@ -272,9 +278,7 @@ def create_streamlit_quantizer_ui(quantizer: MLXQuantizer):
                     output_name=output_name,
                     q_bits=q_bits,
                     q_group_size=q_group_size,
-                    qat=qat,
-                    dwq=dwq,
-                    quantize_embeddings=quantize_embeddings,
+                    mixed_recipe=mixed_recipe,
                     dtype=dtype,
                     progress_callback=progress_callback
                 )

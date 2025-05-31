@@ -155,5 +155,14 @@
     "type": "specialized",
     "reasoning": true,
     "specialization": "Scout"
+  },
+  "Osmosis-Structure-0.6B": {
+    "parameters": "0.6B",
+    "quantization": "4bit",
+    "quantization_options": ["standard"],
+    "base_family": "Osmosis",
+    "version": "1",
+    "type": "specialized",
+    "specialization": "Structure"
   }
 }
