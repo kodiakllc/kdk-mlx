@@ -163,7 +163,6 @@ kdk-mlx/
 <div align="center">
 
 ## 📝 License
-
 [License](LICENSE.md)
 
 </div>
