@@ -5,7 +5,8 @@
     "quantization_options": ["standard"],
     "base_family": "Gemma",
     "version": "3",
-    "type": "base"
+    "type": "base",
+    "model_type": "vlm"
   },
   "gemma-3-4b-it-qat-4bit": {
     "parameters": "4B", 
@@ -13,7 +14,8 @@
     "quantization_options": ["qat"],
     "base_family": "Gemma",
     "version": "3",
-    "type": "base"
+    "type": "base",
+    "model_type": "vlm"
   },
   "gemma-3-4b-it-4bit-DWQ": {
     "parameters": "4B",
@@ -21,7 +23,8 @@
     "quantization_options": ["dwq"],
     "base_family": "Gemma",
     "version": "3",
-    "type": "base"
+    "type": "base",
+    "model_type": "vlm"
   },
   "gemma-3-12b-it-4bit": {
     "parameters": "12B",
@@ -29,7 +32,8 @@
     "quantization_options": ["standard"],
     "base_family": "Gemma",
     "version": "3",
-    "type": "base"
+    "type": "base",
+    "model_type": "vlm"
   },
   "gemma-3-12b-it-qat-4bit": {
     "parameters": "12B",
@@ -37,7 +41,8 @@
     "quantization_options": ["qat"],
     "base_family": "Gemma",
     "version": "3",
-    "type": "base"
+    "type": "base",
+    "model_type": "vlm"
   },
   "gemma-3-12b-it-4bit-DWQ": {
     "parameters": "12B",
@@ -45,7 +50,8 @@
     "quantization_options": ["dwq"],
     "base_family": "Gemma",
     "version": "3",
-    "type": "base"
+    "type": "base",
+    "model_type": "vlm"
   },
   "DeepSeek-R1-Distill-Llama-8B-4bit": {
     "parameters": "8B",

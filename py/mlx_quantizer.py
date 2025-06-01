@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from mlx_lm import convert
 import streamlit as st
+try:
+    from custom_mlx_convert import custom_convert
+    CUSTOM_CONVERT_AVAILABLE = True
+except ImportError:
+    CUSTOM_CONVERT_AVAILABLE = False
 
 class MLXQuantizer:
     """Wrapper for MLX model quantization with Streamlit integration"""
@@ -78,6 +83,75 @@ class MLXQuantizer:
         except Exception as e:
             if progress_callback:
                 progress_callback(f"Error during quantization: {str(e)}")
+            return False
+    
+    def quantize_model_custom(
+        self,
+        hf_model_path: str,
+        output_name: str,
+        q_bits: int = 4,
+        q_group_size: int = 64,
+        mixed_recipe: Optional[str] = None,
+        dtype: str = "float16",
+        model_type: str = "auto",
+        progress_callback: Optional[callable] = None
+    ) -> bool:
+        """
+        Quantize a model using custom converter with VLM support
+        
+        Args:
+            hf_model_path: HuggingFace model path or local path
+            output_name: Name for the output directory
+            q_bits: Quantization bits (4 or 8)
+            q_group_size: Group size for quantization
+            mixed_recipe: Mixed quantization recipe
+            dtype: Output data type
+            model_type: 'lm', 'vlm', or 'auto'
+            progress_callback: Function to call for progress updates
+            
+        Returns:
+            bool: Success status
+        """
+        if not CUSTOM_CONVERT_AVAILABLE:
+            if progress_callback:
+                progress_callback("Custom converter not available, falling back to standard quantization")
+            return self.quantize_model(
+                hf_model_path, output_name, q_bits, q_group_size, 
+                mixed_recipe, dtype, progress_callback
+            )
+        
+        try:
+            output_path = self.models_path / output_name
+            
+            if progress_callback:
+                progress_callback(f"Starting custom quantization (model_type={model_type})...")
+            
+            # Use custom convert function
+            kwargs = {
+                "hf_path": hf_model_path,
+                "mlx_path": str(output_path),
+                "quantize": True,
+                "q_bits": q_bits,
+                "q_group_size": q_group_size,
+                "dtype": dtype,
+                "use_custom_path": True,
+                "model_type": model_type
+            }
+            
+            # Add mixed quantization recipe if specified
+            if mixed_recipe:
+                kwargs["quant_predicate"] = mixed_recipe
+                
+            custom_convert(**kwargs)
+            
+            if progress_callback:
+                progress_callback("Custom quantization completed successfully!")
+                
+            return True
+            
+        except Exception as e:
+            if progress_callback:
+                progress_callback(f"Error during custom quantization: {str(e)}")
             return False
     
     def quantize_model_cli(
@@ -238,6 +312,13 @@ def create_streamlit_quantizer_ui(quantizer: MLXQuantizer):
             # Convert selection to None if Standard
             mixed_recipe = None if mixed_recipe == "Standard" else mixed_recipe
             
+            # Model type selection for VLM support
+            model_type = st.selectbox(
+                "Model Type",
+                ["auto", "lm", "vlm"],
+                help="auto: Auto-detect, lm: Language Model (text-only), vlm: Vision-Language Model"
+            )
+            
             use_cli = st.checkbox("Use CLI Method", value=False, 
                                 help="Use command line interface instead of Python API")
         
@@ -273,15 +354,28 @@ def create_streamlit_quantizer_ui(quantizer: MLXQuantizer):
                     progress_callback=progress_callback
                 )
             else:
-                success = quantizer.quantize_model(
-                    hf_model_path=hf_path,
-                    output_name=output_name,
-                    q_bits=q_bits,
-                    q_group_size=q_group_size,
-                    mixed_recipe=mixed_recipe,
-                    dtype=dtype,
-                    progress_callback=progress_callback
-                )
+                # Use custom quantizer if available and not auto
+                if CUSTOM_CONVERT_AVAILABLE and model_type != "auto":
+                    success = quantizer.quantize_model_custom(
+                        hf_model_path=hf_path,
+                        output_name=output_name,
+                        q_bits=q_bits,
+                        q_group_size=q_group_size,
+                        mixed_recipe=mixed_recipe,
+                        dtype=dtype,
+                        model_type=model_type,
+                        progress_callback=progress_callback
+                    )
+                else:
+                    success = quantizer.quantize_model(
+                        hf_model_path=hf_path,
+                        output_name=output_name,
+                        q_bits=q_bits,
+                        q_group_size=q_group_size,
+                        mixed_recipe=mixed_recipe,
+                        dtype=dtype,
+                        progress_callback=progress_callback
+                    )
             
             if success:
                 st.success(f"✅ Model '{output_name}' quantized successfully!")

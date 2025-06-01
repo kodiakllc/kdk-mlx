@@ -158,3 +158,16 @@ kdk-mlx/
 ├── requirements.txt      # Python dependencies
 └── run.sh               # Interactive launcher
 ```
+---
+
+<div align="center">
+
+## 📝 License
+
+[License](LICENSE.md)
+
+</div>
+
+---
+
+**KDK-MLX** - Developed by Kodiak LLC - Pioneering the future of interactive machine learning with Hot Model Inference on Apple Silicon 🚀

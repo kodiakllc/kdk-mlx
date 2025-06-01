@@ -9,6 +9,14 @@ import re
 from mlx_quantizer import MLXQuantizer, create_streamlit_quantizer_ui
 from hot_model_inference import HotModelInference, FeedbackSignal, create_feedback_ui, create_hmi_control_panel
 
+# Try to import VLM support
+try:
+    from mlx_vlm import load as vlm_load, stream_generate as vlm_stream_generate
+    from mlx_vlm.prompt_utils import apply_chat_template
+    VLM_AVAILABLE = True
+except ImportError:
+    VLM_AVAILABLE = False
+
 # Set page configuration and custom CSS for styling
 st.set_page_config(
     page_title="MLX Chat Interface",
@@ -121,6 +129,10 @@ if "model" not in st.session_state:
     st.session_state.model = None
 if "tokenizer" not in st.session_state:
     st.session_state.tokenizer = None
+if "processor" not in st.session_state:
+    st.session_state.processor = None
+if "is_vlm" not in st.session_state:
+    st.session_state.is_vlm = False
 if "current_model" not in st.session_state:
     st.session_state.current_model = None
 # Performance metrics
@@ -175,6 +187,7 @@ def load_selected_model(model_name):
             # Set references to None to allow garbage collection
             st.session_state.model = None
             st.session_state.tokenizer = None
+            st.session_state.processor = None  # For VLMs
             # Force Python garbage collection to free memory
             import gc
             gc.collect()
@@ -187,24 +200,39 @@ def load_selected_model(model_name):
         "tokens_per_second": 0
     }
     
+    # Check if this is a vision model (default to 'lm' if model_type not specified)
+    model_info = AVAILABLE_MODELS.get(model_name, {})
+    is_vlm = model_info.get('model_type', 'lm') == 'vlm'
+    
     with st.spinner(f"Loading model {model_name}..."):
-        st.session_state.model, st.session_state.tokenizer = load(
-            path_or_hf_repo=MODELS_PATH + model_name, 
-            lazy=True
-        )
-        st.session_state.current_model = model_name
+        if is_vlm and VLM_AVAILABLE:
+            # Load as vision model
+            st.session_state.model, st.session_state.processor = vlm_load(
+                path_or_hf_repo=MODELS_PATH + model_name
+            )
+            st.session_state.tokenizer = st.session_state.processor.tokenizer if hasattr(st.session_state.processor, 'tokenizer') else None
+            st.info(f"Loaded as Vision-Language Model")
+        else:
+            # Load as text model
+            st.session_state.model, st.session_state.tokenizer = load(
+                path_or_hf_repo=MODELS_PATH + model_name, 
+                lazy=True
+            )
+            st.session_state.processor = None
         
-        # Initialize HMI if enabled
-        if st.session_state.hmi_enabled:
+        st.session_state.current_model = model_name
+        st.session_state.is_vlm = is_vlm
+        
+        # Initialize HMI if enabled (only for text models currently)
+        if st.session_state.hmi_enabled and not is_vlm:
             st.session_state.hmi = HotModelInference(MODELS_PATH + model_name)
             st.info("🚀 Hot Model Inference system initialized!")
         
         st.success(f"Model {model_name} loaded!")
 
-def generate_content(prompt, max_tokens=None):
+def generate_content(prompt, max_tokens=None, image=None):
     """Generate content from the model"""
     model = st.session_state.model
-    tokenizer = st.session_state.tokenizer
     
     # If max_tokens is not provided, use the value from session state
     if max_tokens is None:
@@ -218,15 +246,89 @@ def generate_content(prompt, max_tokens=None):
         if param_data["enabled"]:
             sampler_params[param_name] = param_data["value"]
     
-    # Create sampler with selected parameters
-    sampler = make_sampler(**sampler_params)
-    
-    # Generate tokens
-    response = stream_generate(
-        model, tokenizer, prompt=prompt, max_tokens=max_tokens, sampler=sampler
-    )
-    
-    return response
+    # Check if this is a VLM with an image
+    if st.session_state.is_vlm and image is not None and VLM_AVAILABLE:
+        # Use VLM generation with image
+        processor = st.session_state.processor
+        
+        # Handle image - could be PIL Image or bytes
+        from PIL import Image
+        import io
+        import tempfile
+        
+        if isinstance(image, Image.Image):
+            pil_image = image
+        else:
+            pil_image = Image.open(io.BytesIO(image))
+        
+        # mlx_vlm expects image path, not PIL Image, so save temporarily
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+            pil_image.save(tmp_file.name)
+            temp_image_path = tmp_file.name
+        
+        try:
+            # Apply chat template for VLM which adds the appropriate image tokens
+            # Get the model config to determine the correct format
+            model_config = model.config
+            
+            # Format the prompt with the VLM chat template
+            # For VLMs, we need to get just the last user message
+            last_user_msg = None
+            for msg in reversed(st.session_state.messages):
+                if msg["role"] == "user":
+                    last_user_msg = msg["content"]
+                    break
+            
+            if last_user_msg:
+                formatted_prompt = apply_chat_template(
+                    processor, 
+                    model_config,
+                    last_user_msg,  # Pass just the prompt text
+                    add_generation_prompt=True
+                )
+            else:
+                formatted_prompt = prompt
+            
+            # Generate with VLM using stream_generate
+            response = vlm_stream_generate(
+                model, 
+                processor,
+                formatted_prompt,  # Use the formatted prompt with image tokens
+                image=temp_image_path,  # Pass image path
+                max_tokens=max_tokens,
+                temperature=sampler_params.get('temp', 0.7),
+                top_p=sampler_params.get('top_p', 0.95),
+                repetition_penalty=sampler_params.get('repetition_penalty', 1.0) if 'repetition_penalty' in sampler_params else None
+            )
+            
+            # mlx_vlm stream_generate yields GenerationResult objects
+            for result in response:
+                if hasattr(result, 'text'):
+                    yield type('Token', (), {'text': result.text})()
+                else:
+                    yield type('Token', (), {'text': str(result)})()
+                
+        except Exception as e:
+            st.error(f"VLM generation error: {str(e)}")
+            yield type('Token', (), {'text': f"\nError: {str(e)}"})()
+        finally:
+            # Clean up temporary file
+            import os
+            if 'temp_image_path' in locals() and os.path.exists(temp_image_path):
+                os.unlink(temp_image_path)
+    else:
+        # Standard text generation
+        tokenizer = st.session_state.tokenizer
+        
+        # Create sampler with selected parameters
+        sampler = make_sampler(**sampler_params)
+        
+        # Generate tokens
+        response = stream_generate(
+            model, tokenizer, prompt=prompt, max_tokens=max_tokens, sampler=sampler
+        )
+        
+        return response
 
 def extract_thinking(full_text):
     """Extract thinking content and answer from text that contains <think>...</think> tags"""
@@ -256,33 +358,97 @@ def clear_conversation():
     st.session_state.messages = [{"role": "system", "content": st.session_state.messages[0]["content"]}]
 
 def create_message_container():
-    """Create styled message containers based on chat history"""
-    for message in st.session_state.messages:
+    """Create styled message containers with edit/delete functionality"""
+    # Add session state for editing
+    if "editing_message_idx" not in st.session_state:
+        st.session_state.editing_message_idx = None
+    
+    for idx, message in enumerate(st.session_state.messages):
         if message["role"] == "system":
             continue  # Skip system messages
             
-        if message["role"] == "user":
-            with st.chat_message("user"):
-                st.markdown(message["content"])
-        else:
-            with st.chat_message("assistant"):
-                # Check if there's thinking content
-                thinking, answer = extract_thinking(message["content"])
-                if thinking:
-                    # Style the thinking section with custom HTML
-                    st.markdown(f"""
-                    <div class="thinking-box">
-                        <div class="thinking-header">🤔 Thinking Process</div>
-                        {thinking}
-                    </div>
-                    """, unsafe_allow_html=True)
-                if answer:
-                    st.markdown(answer)
+        # Create columns for message and controls
+        col1, col2 = st.columns([10, 1])
+        
+        with col1:
+            if message["role"] == "user":
+                with st.chat_message("user"):
+                    # Check if this message is being edited
+                    if st.session_state.editing_message_idx == idx:
+                        # Show text area for editing
+                        edited_content = st.text_area(
+                            "Edit message:",
+                            value=message["content"],
+                            key=f"edit_{idx}"
+                        )
+                        col_save, col_cancel = st.columns(2)
+                        with col_save:
+                            if st.button("Save", key=f"save_{idx}"):
+                                st.session_state.messages[idx]["content"] = edited_content
+                                st.session_state.editing_message_idx = None
+                                st.rerun()
+                        with col_cancel:
+                            if st.button("Cancel", key=f"cancel_{idx}"):
+                                st.session_state.editing_message_idx = None
+                                st.rerun()
+                    else:
+                        # Check if message contains image data
+                        if "image" in message:
+                            st.image(message["image"], caption="Uploaded image", width=300)
+                        st.markdown(message["content"])
+            else:  # assistant message
+                with st.chat_message("assistant"):
+                    if st.session_state.editing_message_idx == idx:
+                        # Show text area for editing
+                        edited_content = st.text_area(
+                            "Edit message:",
+                            value=message["content"],
+                            key=f"edit_{idx}"
+                        )
+                        col_save, col_cancel = st.columns(2)
+                        with col_save:
+                            if st.button("Save", key=f"save_{idx}"):
+                                st.session_state.messages[idx]["content"] = edited_content
+                                st.session_state.editing_message_idx = None
+                                st.rerun()
+                        with col_cancel:
+                            if st.button("Cancel", key=f"cancel_{idx}"):
+                                st.session_state.editing_message_idx = None
+                                st.rerun()
+                    else:
+                        # Check if there's thinking content
+                        thinking, answer = extract_thinking(message["content"])
+                        if thinking:
+                            # Style the thinking section with custom HTML
+                            st.markdown(f"""
+                            <div class="thinking-box">
+                                <div class="thinking-header">🤔 Thinking Process</div>
+                                {thinking}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        if answer:
+                            st.markdown(answer)
+        
+        with col2:
+            # Show edit/delete buttons only when not editing
+            if st.session_state.editing_message_idx != idx and not st.session_state.get('is_generating', False):
+                if st.button("✏️", key=f"edit_btn_{idx}", help="Edit message"):
+                    st.session_state.editing_message_idx = idx
+                    st.rerun()
+                if st.button("🗑️", key=f"delete_btn_{idx}", help="Delete message"):
+                    st.session_state.messages.pop(idx)
+                    st.rerun()
 
 def main():
         # Sidebar for model selection and parameter configuration
     with st.sidebar:
         st.title("MLX Chat Interface")
+        
+        # VLM support status
+        if VLM_AVAILABLE:
+            st.success("✅ Vision-Language Model support available")
+        else:
+            st.info("ℹ️ Vision models not available (install mlx-vlm)")
         
         # Group models by base family + version and organize by type
         families = {}
@@ -309,6 +475,10 @@ def main():
         def create_display_name(model_name, info):
             """Create a display name showing the model details"""
             display_parts = [f"{info['parameters']}"]
+            
+            # Add vision model indicator
+            if info.get('model_type') == 'vlm':
+                display_parts.append("🖼️ VLM")
             
             # Add model type information FIRST
             if info.get('type') == 'distilled':
@@ -511,18 +681,107 @@ def main():
     # Create message container
     create_message_container()
     
+    # Initialize image upload expanded state and pending image
+    if 'image_upload_expanded' not in st.session_state:
+        st.session_state.image_upload_expanded = False
+    if 'pending_image' not in st.session_state:
+        st.session_state.pending_image = None
+    
+    # Show stop button during generation
+    if st.session_state.get('is_generating', False):
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("🛑 Stop Generation", type="secondary", use_container_width=True, key="stop_button"):
+                st.session_state.stop_generation = True
+                st.rerun()
+    
+    # Show previous generation metrics in a small format
+    if st.session_state.token_metrics["tokens_per_second"] > 0:
+        st.markdown(f"<div style='text-align: right; color: gray; font-size: 0.8em; margin-top: 10px; margin-bottom: 5px;'>💨 <span style='font-weight: bold;'>{st.session_state.token_metrics['tokens_per_second']:.1f}</span> tokens/sec | <span style='font-weight: bold;'>{st.session_state.token_metrics['tokens_generated']}</span> tokens in {st.session_state.token_metrics['generation_time']:.1f}s</div>", unsafe_allow_html=True)
+    
+    # Chat input area - positioned here, after generation metrics and before image upload
+    # Show pending image indicator above chat input if exists
+    if st.session_state.is_vlm and st.session_state.pending_image is not None:
+        col1, col2, col3 = st.columns([1, 6, 1])
+        with col2:
+            st.image(st.session_state.pending_image, caption="Ready to send", width=100)
+        with col3:
+            if st.button("❌", help="Remove image", key="remove_pending_image"):
+                st.session_state.pending_image = None
+                st.rerun()
+    
     # Chat input
     if prompt := st.chat_input("Type your message here"):
         if st.session_state.model is None:
             st.error("Please load a model first!")
             return
-        
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
+    
+        # Add user message to chat history with image if available
+        user_message = {"role": "user", "content": prompt}
+        if st.session_state.is_vlm and st.session_state.pending_image is not None:
+            user_message["image"] = st.session_state.pending_image
+        st.session_state.messages.append(user_message)
         
         # Display user message
         with st.chat_message("user"):
+            if "image" in user_message:
+                st.image(user_message["image"], caption="Attached image", width=300)
             st.markdown(prompt)
+        
+        # Clear pending image immediately after use
+        st.session_state.pending_image = None
+        st.session_state.image_upload_expanded = False  # Close image upload expander
+        
+        # Increment upload counter to reset file uploader if we had an image
+        if "image" in user_message:
+            if 'upload_counter' not in st.session_state:
+                st.session_state.upload_counter = 0
+            st.session_state.upload_counter += 1
+            
+        # JavaScript to close the image upload expander (only if we had an image)
+        if "image" in user_message:
+            close_image_expander_script = '''
+            <script>
+                // Find the image upload expander by looking for "Add Image" text
+                setTimeout(function() {
+                    console.log("Looking for image upload expander...");
+                    
+                    // Get all expanders
+                    let allExpanders = parent.document.querySelectorAll("[data-testid='stExpander']");
+                    console.log("Found " + allExpanders.length + " expanders");
+                    
+                    for (let i = 0; i < allExpanders.length; i++) {
+                        let expander = allExpanders[i];
+                        
+                        // Look for "Add Image" text in the summary
+                        let summary = expander.querySelector("summary");
+                        if (summary && summary.textContent.includes("Add Image")) {
+                            console.log("Found Add Image expander");
+                            
+                            // Find the details element and remove open attribute
+                            let detailsElement = expander.querySelector("details[open]");
+                            if (detailsElement) {
+                                detailsElement.removeAttribute("open");
+                                console.log("Image upload expander closed successfully.");
+                                break;
+                            } else {
+                                console.log("Details element not found or not open.");
+                            }
+                        }
+                    }
+                }, 100);
+            </script>
+            '''
+            
+            # Create a temporary container to inject the script
+            script_container = st.empty()
+            with script_container:
+                components.html(close_image_expander_script, height=0)
+            
+            # Remove script after executing
+            time.sleep(0.2)
+            script_container.empty()
         
         # Set generation state and minimize feedback panel
         st.session_state.is_generating = True
@@ -542,7 +801,7 @@ def main():
                 # Check if current model is a reasoning model
                 current_model_info = AVAILABLE_MODELS.get(st.session_state.current_model, {})
                 is_reasoning_model = current_model_info.get('reasoning', False)
-                
+            
                 prompt_template = tokenizer.apply_chat_template(
                     messages, 
                     tokenize=False, 
@@ -594,7 +853,16 @@ def main():
                     )
                 else:
                     # Standard generation
-                    token_stream = generate_content(prompt_template)
+                    # Get the last user message image if it's a VLM
+                    last_image = None
+                    if st.session_state.is_vlm:
+                        # Find the last user message with an image
+                        for msg in reversed(st.session_state.messages):
+                            if msg["role"] == "user" and "image" in msg:
+                                last_image = msg["image"]
+                                break
+                    
+                    token_stream = generate_content(prompt_template, image=last_image)
                 
                 # Process the token stream (works for both HMI and standard generation)
                 for token in token_stream:
@@ -862,18 +1130,49 @@ def main():
                 st.session_state.is_generating = False
                 st.session_state.stop_generation = False
     
-    # Show stop button during generation (positioned after chat input)
-    if st.session_state.get('is_generating', True):
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            if st.button("🛑 Stop Generation", type="secondary", use_container_width=True, key="stop_button"):
-                st.session_state.stop_generation = True
+    # Image upload interface for VLM models - only show when NOT generating
+    if st.session_state.is_vlm and not st.session_state.get('is_generating', False):
+        # Add a button to toggle the image upload area
+        if not st.session_state.image_upload_expanded and st.session_state.pending_image is None:
+            if st.button("📷 Add Image", key="open_image_upload", use_container_width=True):
+                st.session_state.image_upload_expanded = True
                 st.rerun()
-    
-    # Show previous generation metrics in a small format at the bottom
-    if st.session_state.token_metrics["tokens_per_second"] > 0:
-        st.markdown(f"<div style='text-align: right; color: gray; font-size: 0.8em; margin-top: 10px; margin-bottom: 5px;'>💨 <span style='font-weight: bold;'>{st.session_state.token_metrics['tokens_per_second']:.1f}</span> tokens/sec | <span style='font-weight: bold;'>{st.session_state.token_metrics['tokens_generated']}</span> tokens in {st.session_state.token_metrics['generation_time']:.1f}s</div>", unsafe_allow_html=True)
+        
+        # Show image upload expander
+        if st.session_state.image_upload_expanded or st.session_state.pending_image is not None:
+            with st.expander("📷 Add Image", expanded=st.session_state.image_upload_expanded):
+                # Create a unique key for the file uploader that changes when image is cleared
+                uploader_key = f"image_uploader_{st.session_state.get('upload_counter', 0)}"
+                
+                uploaded_file = st.file_uploader(
+                    "Choose an image", 
+                    type=['png', 'jpg', 'jpeg', 'gif', 'webp'],
+                    key=uploader_key,
+                    help="Upload an image to include with your message"
+                )
+                
+                if uploaded_file is not None and st.session_state.pending_image is None:
+                    # Process the uploaded image
+                    from PIL import Image
+                    import io
+                    
+                    # Read and display the image
+                    image = Image.open(uploaded_file)
+                    st.session_state.pending_image = image
+                
+                # Show the pending image if it exists
+                if st.session_state.pending_image is not None:
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.image(st.session_state.pending_image, caption="Image ready to send", width=300)
+                    with col2:
+                        if st.button("Remove", key="remove_upload"):
+                            st.session_state.pending_image = None
+                            # Increment upload counter to reset file uploader
+                            if 'upload_counter' not in st.session_state:
+                                st.session_state.upload_counter = 0
+                            st.session_state.upload_counter += 1
+                            st.rerun()
     
     # Feedback panel at the very bottom - only visible when NOT generating
     if (st.session_state.show_feedback and st.session_state.hmi and 
