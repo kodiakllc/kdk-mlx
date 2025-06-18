@@ -3,11 +3,14 @@ import streamlit as st
 import streamlit.components.v1 as components
 import time
 import json
+import io
+import tempfile
 from mlx_lm import load, generate, stream_generate
 from mlx_lm.sample_utils import make_sampler
 import re
 from mlx_quantizer import MLXQuantizer, create_streamlit_quantizer_ui
 from hot_model_inference import HotModelInference, FeedbackSignal, create_feedback_ui, create_hmi_control_panel
+from PIL import Image
 
 # Try to import VLM support
 try:
@@ -208,7 +211,7 @@ def load_selected_model(model_name):
         if is_vlm and VLM_AVAILABLE:
             # Load as vision model
             st.session_state.model, st.session_state.processor = vlm_load(
-                path_or_hf_repo=MODELS_PATH + model_name
+                path_or_hf_repo=MODELS_PATH + model_name, lazy = True
             )
             st.session_state.tokenizer = st.session_state.processor.tokenizer if hasattr(st.session_state.processor, 'tokenizer') else None
             st.info(f"Loaded as Vision-Language Model")
@@ -246,75 +249,94 @@ def generate_content(prompt, max_tokens=None, image=None):
         if param_data["enabled"]:
             sampler_params[param_name] = param_data["value"]
     
-    # Check if this is a VLM with an image
-    if st.session_state.is_vlm and image is not None and VLM_AVAILABLE:
-        # Use VLM generation with image
+    # Check if this is a VLM (with or without image)
+    if st.session_state.is_vlm and VLM_AVAILABLE:
+        # Use VLM generation
         processor = st.session_state.processor
         
-        # Handle image - could be PIL Image or bytes
-        from PIL import Image
-        import io
-        import tempfile
-        
-        if isinstance(image, Image.Image):
-            pil_image = image
+        # Handle both list (messages) and string (formatted prompt) inputs
+        if isinstance(prompt, list):
+            # For message list, we can pass it directly to apply_chat_template
+            messages = prompt
+            # Find the last user message with image
+            last_user_image = None
+            for msg in reversed(messages):
+                if msg["role"] == "user" and "image" in msg:
+                    last_user_image = msg["image"]
+                    break
         else:
-            pil_image = Image.open(io.BytesIO(image))
+            # For formatted prompt, create a simple message structure
+            messages = [{"role": "user", "content": prompt}]
+            last_user_image = image
         
-        # mlx_vlm expects image path, not PIL Image, so save temporarily
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
-            pil_image.save(tmp_file.name)
-            temp_image_path = tmp_file.name
+        if not messages:
+            yield type('Token', (), {'text': "Error: No messages found"})()
+            return
+        
+        # Handle image if present
+        temp_image_path = None
+        if last_user_image is not None:
+            if isinstance(last_user_image, Image.Image):
+                pil_image = last_user_image
+            else:
+                pil_image = Image.open(io.BytesIO(last_user_image))
+            
+            # mlx_vlm expects image path, not PIL Image, so save temporarily
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                pil_image.save(tmp_file.name)
+                temp_image_path = tmp_file.name
         
         try:
             # Apply chat template for VLM which adds the appropriate image tokens
-            # Get the model config to determine the correct format
             model_config = model.config
             
             # Format the prompt with the VLM chat template
-            # For VLMs, we need to get just the last user message
-            last_user_msg = None
-            for msg in reversed(st.session_state.messages):
-                if msg["role"] == "user":
-                    last_user_msg = msg["content"]
-                    break
-            
-            if last_user_msg:
-                formatted_prompt = apply_chat_template(
-                    processor, 
-                    model_config,
-                    last_user_msg,  # Pass just the prompt text
-                    add_generation_prompt=True
-                )
-            else:
-                formatted_prompt = prompt
+            # VLM apply_chat_template can handle chat format (like in the example)
+            formatted_prompt = apply_chat_template(
+                processor, 
+                model_config,
+                messages,  # Pass the full message structure
+                num_images=1 if temp_image_path else 0
+            )
             
             # Generate with VLM using stream_generate
+            # mlx_vlm stream_generate expects image as a list of paths, not a single path
+            image_list = [temp_image_path] if temp_image_path else []
+            
             response = vlm_stream_generate(
                 model, 
                 processor,
-                formatted_prompt,  # Use the formatted prompt with image tokens
-                image=temp_image_path,  # Pass image path
+                formatted_prompt,
+                image_list,  # Pass image as list
                 max_tokens=max_tokens,
                 temperature=sampler_params.get('temp', 0.7),
                 top_p=sampler_params.get('top_p', 0.95),
-                repetition_penalty=sampler_params.get('repetition_penalty', 1.0) if 'repetition_penalty' in sampler_params else None
             )
             
             # mlx_vlm stream_generate yields GenerationResult objects
+            # We need to yield the incremental text (last_segment) not the full text
             for result in response:
-                if hasattr(result, 'text'):
+                # GenerationResult has a 'last_segment' attribute with incremental text
+                if hasattr(result, 'last_segment'):
+                    # Yield the incremental text segment
+                    yield type('Token', (), {'text': result.last_segment})()
+                elif hasattr(result, 'text'):
+                    # Fallback: if no last_segment, this might be first iteration
+                    # Yield the full text on first iteration only
                     yield type('Token', (), {'text': result.text})()
                 else:
+                    # Final fallback
                     yield type('Token', (), {'text': str(result)})()
                 
         except Exception as e:
-            st.error(f"VLM generation error: {str(e)}")
-            yield type('Token', (), {'text': f"\nError: {str(e)}"})()
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"VLM generation error: {error_details}")
+            yield type('Token', (), {'text': f"\nError: {str(e)}\n"})()
         finally:
             # Clean up temporary file
             import os
-            if 'temp_image_path' in locals() and os.path.exists(temp_image_path):
+            if 'temp_image_path' in locals() and temp_image_path is not None and os.path.exists(temp_image_path):
                 os.unlink(temp_image_path)
     else:
         # Standard text generation
@@ -472,7 +494,7 @@ def main():
             """Extract numeric value from parameter string like '4B' -> 4"""
             return float(param_str.replace('B', ''))
         
-        def create_display_name(model_name, info):
+        def create_display_name(info):
             """Create a display name showing the model details"""
             display_parts = [f"{info['parameters']}"]
             
@@ -523,7 +545,7 @@ def main():
             
             # Add all models in parameter order
             for model_name, info in sorted_models:
-                display_name = create_display_name(model_name, info)
+                display_name = create_display_name(info)
                 model_options.append((display_name, model_name))
         
         # Find current model index
@@ -690,7 +712,7 @@ def main():
     # Show stop button during generation
     if st.session_state.get('is_generating', False):
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([1, 1, 1])
+        _, col2, _ = st.columns([1, 1, 1])
         with col2:
             if st.button("🛑 Stop Generation", type="secondary", use_container_width=True, key="stop_button"):
                 st.session_state.stop_generation = True
@@ -701,15 +723,16 @@ def main():
         st.markdown(f"<div style='text-align: right; color: gray; font-size: 0.8em; margin-top: 10px; margin-bottom: 5px;'>💨 <span style='font-weight: bold;'>{st.session_state.token_metrics['tokens_per_second']:.1f}</span> tokens/sec | <span style='font-weight: bold;'>{st.session_state.token_metrics['tokens_generated']}</span> tokens in {st.session_state.token_metrics['generation_time']:.1f}s</div>", unsafe_allow_html=True)
     
     # Chat input area - positioned here, after generation metrics and before image upload
-    # Show pending image indicator above chat input if exists
-    if st.session_state.is_vlm and st.session_state.pending_image is not None:
-        col1, col2, col3 = st.columns([1, 6, 1])
-        with col2:
-            st.image(st.session_state.pending_image, caption="Ready to send", width=100)
-        with col3:
-            if st.button("❌", help="Remove image", key="remove_pending_image"):
-                st.session_state.pending_image = None
-                st.rerun()
+    # Show pending image indicator above chat input if exists (only when NOT generating)
+    # if (st.session_state.is_vlm and st.session_state.pending_image is not None 
+    #     and not st.session_state.get('is_generating', False)):
+    #     col1, col2, col3 = st.columns([1, 6, 1])
+    #     with col2:
+    #         st.image(st.session_state.pending_image, caption="Ready to send", width=100)
+    #     with col3:
+    #         if st.button("❌", help="Remove image", key="remove_pending_image"):
+    #             st.session_state.pending_image = None
+    #             st.rerun()
     
     # Chat input
     if prompt := st.chat_input("Type your message here"):
@@ -797,35 +820,40 @@ def main():
             messages = st.session_state.messages
             tokenizer = st.session_state.tokenizer
             
-            if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:
-                # Check if current model is a reasoning model
-                current_model_info = AVAILABLE_MODELS.get(st.session_state.current_model, {})
-                is_reasoning_model = current_model_info.get('reasoning', False)
+            # Check if current model is a reasoning model (works for both VLM and text models)
+            current_model_info = AVAILABLE_MODELS.get(st.session_state.current_model, {})
+            is_reasoning_model = current_model_info.get('reasoning', False)
             
+            # Handle VLMs differently since they don't have standard chat templates
+            if st.session_state.is_vlm:
+                # For VLMs, we'll pass the messages directly and handle formatting in generate_content
+                prompt_template = messages
+            elif hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:
                 prompt_template = tokenizer.apply_chat_template(
                     messages, 
                     tokenize=False, 
                     add_generation_prompt=True,
                     enable_thinking=is_reasoning_model
                 )
+            else:
+                # No chat template available
+                prompt_template = None
                 
-                # Check if current model is a reasoning model
-                current_model_info = AVAILABLE_MODELS.get(st.session_state.current_model, {})
-                is_reasoning_model = current_model_info.get('reasoning', False)
-                
-                # Track transition from thinking to answer - only for reasoning models
-                in_thinking_mode = is_reasoning_model
-                thinking_content = ""
-                answer_content = ""
-                
-                # Token generation metrics
-                token_counter = 0
-                start_time = time.time()
-                token_speed_container = st.empty()
-                
+            # Initialize common variables for all model types
+            in_thinking_mode = is_reasoning_model
+            thinking_content = ""
+            answer_content = ""
+            
+            # Token generation metrics
+            token_counter = 0
+            start_time = time.time()
+            token_speed_container = st.empty()
+            
+            # Generate content based on model type and availability
+            if prompt_template is not None:
                 # Stream the response - use HMI if enabled, otherwise use standard generation
-                if st.session_state.hmi_enabled and st.session_state.hmi:
-                    # Use Hot Model Inference with real-time feedback
+                if st.session_state.hmi_enabled and st.session_state.hmi and not st.session_state.is_vlm:
+                    # Use Hot Model Inference with real-time feedback (text models only)
                     def real_time_feedback_callback(partial_response):
                         # Simple heuristic feedback during generation
                         if len(partial_response) > 100:
@@ -852,17 +880,8 @@ def main():
                         feedback_callback=real_time_feedback_callback
                     )
                 else:
-                    # Standard generation
-                    # Get the last user message image if it's a VLM
-                    last_image = None
-                    if st.session_state.is_vlm:
-                        # Find the last user message with an image
-                        for msg in reversed(st.session_state.messages):
-                            if msg["role"] == "user" and "image" in msg:
-                                last_image = msg["image"]
-                                break
-                    
-                    token_stream = generate_content(prompt_template, image=last_image)
+                    # Standard generation (for both VLMs and text models without HMI)
+                    token_stream = generate_content(prompt_template)
                 
                 # Process the token stream (works for both HMI and standard generation)
                 for token in token_stream:
@@ -890,8 +909,68 @@ def main():
                             </div>
                             """, unsafe_allow_html=True)
                     
-                    # Only process thinking tags for reasoning models
-                    if is_reasoning_model:
+                    # VLMs - simpler streaming approach that shows content immediately
+                    if st.session_state.is_vlm:
+                        # For streaming, we need a simpler approach that shows content as it arrives
+                        # Clean the full response of VLM delimiters
+                        clean_response = full_response
+                        clean_response = clean_response.replace('<end_of_turn>', '')
+                        clean_response = clean_response.replace('<start_of_turn>', '')
+                        clean_response = clean_response.replace('<|endoftext|>', '')
+                        clean_response = clean_response.replace('<|end|>', '')
+                        clean_response = clean_response.replace('model\n', '')
+                        clean_response = clean_response.replace('user\n', '')
+                        
+                        # Check if we have any thinking tags at all
+                        if "<think>" not in clean_response and "</think>" not in clean_response:
+                            # No thinking tags - just display cleaned content
+                            message_placeholder.markdown(clean_response.strip())
+                        else:
+                            # We have thinking tags - do simple replacement for streaming
+                            # This shows content immediately but may not be perfectly formatted until complete
+                            display_parts = []
+                            current_text = clean_response
+                            
+                            # Split by <think> tags and process each part
+                            parts = current_text.split("<think>")
+                            
+                            # First part is always regular content (before any thinking)
+                            if parts[0].strip():
+                                display_parts.append(parts[0].strip())
+                            
+                            # Process remaining parts that start with thinking content
+                            for i in range(1, len(parts)):
+                                part = parts[i]
+                                if "</think>" in part:
+                                    # This part has a complete thinking block
+                                    think_end = part.find("</think>")
+                                    thinking_content = part[:think_end].strip()
+                                    remaining_content = part[think_end + 8:].strip()
+                                    
+                                    if thinking_content:
+                                        display_parts.append(f"""<div class="thinking-box">
+<div class="thinking-header">🧠 VLM Thinking...</div>
+{thinking_content}
+</div>""")
+                                    
+                                    if remaining_content:
+                                        display_parts.append(remaining_content)
+                                else:
+                                    # Incomplete thinking block - show what we have so far
+                                    if part.strip():
+                                        display_parts.append(f"""<div class="thinking-box">
+<div class="thinking-header">🧠 VLM Thinking...</div>
+{part.strip()}
+</div>""")
+                            
+                            # Join all parts and display
+                            display_text = "\n\n".join(display_parts)
+                            message_placeholder.markdown(display_text, unsafe_allow_html=True)
+                    # Non-reasoning text models also get immediate display
+                    elif not is_reasoning_model:
+                        message_placeholder.markdown(full_response)
+                    # Reasoning models need thinking tag processing
+                    elif is_reasoning_model:
                         # Check if we've reached the end of a thinking block
                         if in_thinking_mode and "</think>" in full_response:
                             # Split at the </think> tag
@@ -1017,7 +1096,87 @@ def main():
                 current_model_info = AVAILABLE_MODELS.get(st.session_state.current_model, {})
                 is_reasoning_model = current_model_info.get('reasoning', False)
                 
-                if is_reasoning_model and "</think>" not in full_response:
+                # First handle VLMs specifically
+                if st.session_state.is_vlm:
+                    # Use the same interleaved thinking logic for final display
+                    display_text = ""
+                    remaining_text = full_response
+                    
+                    # Process all thinking blocks in the response
+                    while "<think>" in remaining_text or "</think>" in remaining_text:
+                        # Find the next <think> tag
+                        think_start = remaining_text.find("<think>")
+                        think_end = remaining_text.find("</think>")
+                        
+                        if think_start == -1 and think_end == -1:
+                            # No more thinking tags
+                            break
+                        elif think_start != -1 and (think_end == -1 or think_start < think_end):
+                            # We have a <think> tag (start of thinking block)
+                            # Add any content before the thinking block
+                            before_think = remaining_text[:think_start].strip()
+                            if before_think:
+                                # Clean VLM delimiters from regular content
+                                clean_before = before_think
+                                clean_before = clean_before.replace('<end_of_turn>', '')
+                                clean_before = clean_before.replace('<start_of_turn>', '')
+                                clean_before = clean_before.replace('<|endoftext|>', '')
+                                clean_before = clean_before.replace('<|end|>', '')
+                                clean_before = clean_before.replace('model\n', '')
+                                clean_before = clean_before.replace('user\n', '')
+                                clean_before = clean_before.strip()
+                                if clean_before:
+                                    display_text += clean_before + "\n\n"
+                            
+                            # Now find the end of this thinking block
+                            remaining_text = remaining_text[think_start + 7:]  # Skip past <think>
+                            next_end = remaining_text.find("</think>")
+                            
+                            if next_end != -1:
+                                # Complete thinking block
+                                thinking_content = remaining_text[:next_end].strip()
+                                if thinking_content:
+                                    display_text += f"""<div class="thinking-box">
+                                        <div class="thinking-header">🧠 VLM Thinking...</div>
+                                        {thinking_content}
+                                    </div>
+                                    """
+                                remaining_text = remaining_text[next_end + 8:]  # Skip past </think>
+                            else:
+                                # Incomplete thinking block - rest of content is thinking
+                                thinking_content = remaining_text.strip()
+                                if thinking_content:
+                                    display_text += f"""<div class="thinking-box">
+                                        <div class="thinking-header">🧠 VLM Thinking...</div>
+                                        {thinking_content}
+                                    </div>
+                                    """
+                                remaining_text = ""
+                                break
+                        else:
+                            # We have a </think> without a preceding <think> - treat as regular content
+                            before_end = remaining_text[:think_end].strip()
+                            if before_end:
+                                display_text += before_end + "\n\n"
+                            remaining_text = remaining_text[think_end + 8:]
+                    
+                    # Add any remaining content after all thinking blocks
+                    if remaining_text:
+                        clean_remaining = remaining_text
+                        # Remove common VLM conversation delimiters
+                        clean_remaining = clean_remaining.replace('<end_of_turn>', '')
+                        clean_remaining = clean_remaining.replace('<start_of_turn>', '')
+                        clean_remaining = clean_remaining.replace('<|endoftext|>', '')
+                        clean_remaining = clean_remaining.replace('<|end|>', '')
+                        clean_remaining = clean_remaining.replace('model\n', '')
+                        clean_remaining = clean_remaining.replace('user\n', '')
+                        clean_remaining = clean_remaining.strip()
+                        if clean_remaining:
+                            display_text += clean_remaining
+                    
+                    # Final display update
+                    message_placeholder.markdown(display_text, unsafe_allow_html=True)
+                elif is_reasoning_model and "</think>" not in full_response:
                     # For reasoning models that didn't complete thinking, show everything in thinking box
                     display_text = f"""
                     <div class="thinking-box">
@@ -1119,16 +1278,57 @@ def main():
                     st.markdown(metrics_html, unsafe_allow_html=True)
                 
                 # Add assistant response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                # For VLMs, clean up the response before saving
+                if st.session_state.is_vlm:
+                    # Remove common VLM conversation delimiters
+                    clean_full_response = full_response
+                    clean_full_response = clean_full_response.replace('<end_of_turn>', '')
+                    clean_full_response = clean_full_response.replace('<start_of_turn>', '')
+                    clean_full_response = clean_full_response.replace('<|endoftext|>', '')
+                    clean_full_response = clean_full_response.replace('<|end|>', '')
+                    clean_full_response = clean_full_response.replace('model\n', '')
+                    clean_full_response = clean_full_response.replace('user\n', '')
+                    clean_full_response = clean_full_response.strip()
+                    st.session_state.messages.append({"role": "assistant", "content": clean_full_response})
+                else:
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
                 
                 # Reset generation state
                 st.session_state.is_generating = False
                 st.session_state.stop_generation = False
+                
+                # Force a rerun to ensure edit/delete buttons are available
+                st.rerun()
             else:
-                st.error("Chat template not available for this model.")
-                # Reset generation state even on error
+                # Handle models without chat templates
+                if st.session_state.is_vlm:
+                    # VLMs can still work without standard chat templates
+                    prompt_template = st.session_state.messages
+                    token_stream = generate_content(prompt_template)
+                    
+                    # Process the token stream
+                    for token in token_stream:
+                        if st.session_state.stop_generation:
+                            break
+                        
+                        token_text = token.text if hasattr(token, 'text') else token
+                        full_response += token_text
+                        
+                        # Update display
+                        message_placeholder.markdown(full_response)
+                        time.sleep(0.001)
+                    
+                    # Add assistant response to chat history
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                else:
+                    st.error("Chat template not available for this model.")
+                
+                # Reset generation state
                 st.session_state.is_generating = False
                 st.session_state.stop_generation = False
+                
+                # Force a rerun to ensure edit/delete buttons are available
+                st.rerun()
     
     # Image upload interface for VLM models - only show when NOT generating
     if st.session_state.is_vlm and not st.session_state.get('is_generating', False):
@@ -1138,9 +1338,11 @@ def main():
                 st.session_state.image_upload_expanded = True
                 st.rerun()
         
-        # Show image upload expander
+        # Show image upload expander (but collapse it if we have a pending image ready)
         if st.session_state.image_upload_expanded or st.session_state.pending_image is not None:
-            with st.expander("📷 Add Image", expanded=st.session_state.image_upload_expanded):
+            # If we have a pending image, keep the expander collapsed
+            expanded_state = st.session_state.image_upload_expanded and st.session_state.pending_image is None
+            with st.expander("📷 Add Image", expanded=expanded_state):
                 # Create a unique key for the file uploader that changes when image is cleared
                 uploader_key = f"image_uploader_{st.session_state.get('upload_counter', 0)}"
                 
@@ -1153,9 +1355,6 @@ def main():
                 
                 if uploaded_file is not None and st.session_state.pending_image is None:
                     # Process the uploaded image
-                    from PIL import Image
-                    import io
-                    
                     # Read and display the image
                     image = Image.open(uploaded_file)
                     st.session_state.pending_image = image
