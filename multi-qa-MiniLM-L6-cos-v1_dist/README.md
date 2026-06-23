@@ -35,11 +35,13 @@ git commit -m "Update multi-qa-MiniLM-L6-cos-v1 dist scripts"
 curl -fsSL https://raw.githubusercontent.com/kodiakllc/kdk-mlx/refs/heads/develop/phase-2/multi-qa-MiniLM-L6-cos-v1_dist/download.sh -o download.sh
 bash download.sh /path/to/dest
 ```
-- Uses `gh release download` when `gh` is available (works for private repos).
-- Falls back to public `releases/download/<tag>/<asset>` URLs via `curl` if
-  `gh` isn't installed (public repos only).
+- `download.sh` uses **public `releases/download/<tag>/<asset>` URLs via curl
+  only** — no `gh`, no auth. The repo/release must be **public**.
+- Shows step + per-chunk `[i/N]` status indicators, a curl progress bar, and
+  `✓` checksum confirmations.
 - `./download.sh --local /path/to/dest` reconstructs from chunks already next
   to the script (offline).
+- `gh` is only needed by `upload.sh` to publish the assets.
 
 ## Notes
 - Chunks are 90MB, well under any per-asset limit; release assets have no
