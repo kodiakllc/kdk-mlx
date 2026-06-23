@@ -1,0 +1,16 @@
+# manifest for multi-qa-MiniLM-L6-cos-v1
+# format: <sha256>  <filename>
+archive_name multi-qa-MiniLM-L6-cos-v1.tar.gz
+archive_sha256 85a0c534b4cc1b4d410039b24eb345a90706d00ad11e0aa346990a51eba07f27
+archive_bytes 796546409
+chunk_prefix multi-qa-MiniLM-L6-cos-v1.tar.gz.part
+# --- chunks (in order) ---
+b0b5ee301a68da070b53b3855abd71459e933b23da75ae2684df2e88c5a16cef  multi-qa-MiniLM-L6-cos-v1.tar.gz.partaa
+cd12b79c17587bececdef9e9c1a1f0c7ab05e7f0783f0c9b279f5756f35f2eb3  multi-qa-MiniLM-L6-cos-v1.tar.gz.partab
+163e42400828636458476e589bfff76b8c5247d192ae1255cd7944378b3879db  multi-qa-MiniLM-L6-cos-v1.tar.gz.partac
+062988f0a64260e8183f31225911811dbcb99db0b20c951c054da154030f0644  multi-qa-MiniLM-L6-cos-v1.tar.gz.partad
+5800cb3b59e384095a61fe33145c14aa574e02f614148c5f84b0131d30af0466  multi-qa-MiniLM-L6-cos-v1.tar.gz.partae
+c110458ee1ff440ee1a6cdcef4368eeb8eb113e90192b749a08e333e3a1f1cd2  multi-qa-MiniLM-L6-cos-v1.tar.gz.partaf
+496fdb96c2b129eaf8009561cd7b9e7d8db56099bfd2fdd07479dfe4960388ca  multi-qa-MiniLM-L6-cos-v1.tar.gz.partag
+8e6a1ee995bebdcbc674c690e7b2065c8dfa293919ac2e3b681972d4c4068bae  multi-qa-MiniLM-L6-cos-v1.tar.gz.partah
+0a950f3f0753e6a278edbbf2cb7f85560f47a89a821fda31fada921035020592  multi-qa-MiniLM-L6-cos-v1.tar.gz.partai

@@ -4,3 +4,9 @@ mlx_env/*
 **/__pycache__
 hf_models/hmi_sessions
 CLAUDE.md
+
+# Raw uncompressed model — distributed via GitHub Release assets (see multi-qa-MiniLM-L6-cos-v1_dist/)
+multi-qa-MiniLM-L6-cos-v1/
+# chunks + full archive live in GitHub Releases, NOT in git
+multi-qa-MiniLM-L6-cos-v1_dist/*.tar.gz
+multi-qa-MiniLM-L6-cos-v1_dist/*.tar.gz.part*
