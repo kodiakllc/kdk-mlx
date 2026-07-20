@@ -10,3 +10,9 @@ multi-qa-MiniLM-L6-cos-v1/
 # chunks + full archive live in GitHub Releases, NOT in git
 multi-qa-MiniLM-L6-cos-v1_dist/*.tar.gz
 multi-qa-MiniLM-L6-cos-v1_dist/*.tar.gz.part*
+
+# Raw uncompressed model — distributed via GitHub Release assets (see bge-m3_dist/)
+bge-m3/
+# chunks + full archive live in GitHub Releases, NOT in git
+bge-m3_dist/*.tar.gz
+bge-m3_dist/*.tar.gz.part*

@@ -1,0 +1,36 @@
+# manifest for bge-m3
+# format: <sha256>  <filename>
+archive_name bge-m3.tar.gz
+archive_sha256 beb2ab306d0dd1f7cc2ee0b67569c2ace3a123e0c95dee42904d03445c91a7da
+archive_bytes 2673138987
+chunk_prefix bge-m3.tar.gz.part
+# --- chunks (in order) ---
+3dc7be4961b0ec0f4d6b22e849d30fd3623b885a6c718bac9042d80ce8ae4d6a  bge-m3.tar.gz.partaa
+5fc9e11e37245afc725af93518c7b27f3c60aafb7b101327e8bd819e0f6c4cb2  bge-m3.tar.gz.partab
+5475c6548d3948b9a8f77ae01255d5c8248dc7b75b16446bc3fec6b1430f1dcd  bge-m3.tar.gz.partac
+f242362dbe7ac08dfb8cd8e58694deb2b6a0aae2f8fd695a451111f97c17c73e  bge-m3.tar.gz.partad
+37053d81806e08ca63ffba6f8170830b1cfe98dbf5b1e0cc731a790ae65a4bf8  bge-m3.tar.gz.partae
+7303fafffeeb008d52b20988f235011ebaa58c4fd9bca56bc85701c2eedfee6d  bge-m3.tar.gz.partaf
+06f543c6f228ac1832d1fda46daf615484a1be949b9a84eea20df0920f8c606a  bge-m3.tar.gz.partag
+0f9b9799aa405c096d4d02f96e04893732a6e63e2c34aa8f3780e70d9c498b70  bge-m3.tar.gz.partah
+bc916870d4438da20693ed0498c5b4fb6c3a758377847680aa83654e2764a05d  bge-m3.tar.gz.partai
+e4980a5271cc53902e914548a23a522b78fc9541eebbfe31d8d7c6c45a7a7f00  bge-m3.tar.gz.partaj
+bf2680c9f70975adda432da6d4cedfd900ce09583af869718e5ab203b5340848  bge-m3.tar.gz.partak
+2ab8121a11ec7f74a43150a78dd2c2d3611d5ddffc1501cf4a7197f00826fae8  bge-m3.tar.gz.partal
+bbd08d18599fdd76d4dacdcefaa63d0d6e2647bbc392768554c106730c7c95e8  bge-m3.tar.gz.partam
+e7546e06558140ee59b72119394bf5cd71134959794c54c1725b27af4422da7d  bge-m3.tar.gz.partan
+04a0d6a22c7c6f687410a633d044bf4a4cb00c1139d8707fb59db10ddd25cf72  bge-m3.tar.gz.partao
+552f372f57f96b9ac41d41437f7021f081353816715bb5e46fdaef00dcf4ce95  bge-m3.tar.gz.partap
+f521bff063a20093a6687291bd2befef9d995763fa0a5eff37a17d6cadbca3ac  bge-m3.tar.gz.partaq
+ea4a881f25be6195bb6a9bfe73c3ac7e3765a08c5ff9e96a66070639cc55f39e  bge-m3.tar.gz.partar
+11b0749dd3b5b803d1484688c4bba8a9b3c6340ffca19d983997b8d9da145093  bge-m3.tar.gz.partas
+971ba046e854343e9dd4b18f67c0fb6e52ad7d7a65adf2181e6f6bb8934435d5  bge-m3.tar.gz.partat
+a5882c2f21a2d0e3ae4d99a5c96d3a03d52554dfd7c5fe5ea56ad617f31614f2  bge-m3.tar.gz.partau
+d421abd1beae5761fe174e6d04636d25333ac90cdafc07a65faa8c100d7533b2  bge-m3.tar.gz.partav
+fad52de65074dcab1da88ae9201254d978b89808b95b6aee133a6e02db1924d6  bge-m3.tar.gz.partaw
+02ae6e6a995389bb24ed63c14a6764c07d1ff3537350df5ef2372f67c1c0b61e  bge-m3.tar.gz.partax
+b5b45c9c7e3df887556f988235c69513de6dc93862f2fabf77665705c6176ef0  bge-m3.tar.gz.partay
+5c7d080eabf3a94846ba09f9535161774484ccd200061baeee244301b7cbb97f  bge-m3.tar.gz.partaz
+e3bb109c75a5914bbfff92b6fcfd1f2864942ffc311b1d8ca9bab2a720743782  bge-m3.tar.gz.partba
+3583f259c7a2fc43a562a35b23cc7a17dfd36ab41b47f71c2d062b1698225f57  bge-m3.tar.gz.partbb
+e2d8f990d50eed6d4e41c23cfa8330eedc189fd40e09223f29f0bdd1254f34e2  bge-m3.tar.gz.partbc
